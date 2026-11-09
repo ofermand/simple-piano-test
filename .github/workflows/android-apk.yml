@@ -29,6 +29,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Test forgiving note timing
+        run: |
+          mkdir -p /tmp/simplepiano-timing
+          javac -d /tmp/simplepiano-timing \
+            app/src/main/java/com/simplepianotest/app/NoteTimingMatcher.java \
+            tests/com/simplepianotest/app/NoteTimingMatcherTest.java
+          java -cp /tmp/simplepiano-timing com.simplepianotest.app.NoteTimingMatcherTest
       - name: Compile debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Publish installable APK
