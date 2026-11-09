@@ -25,6 +25,8 @@ public final class NoteTimingMatcherTest {
         check("early next note",2,match(67.02,1.78,true));
         check("wrong pitch", -1,match(62.05,0.25,true));
         check("octave up in flexible mode",0,match(72.0,.30,true));
+        check("octave down in flexible mode",0,match(48.0,.30,true));
+        check("octave down is not exact mode",-1,match(48.0,.30,false));
         check("octave not counted in accurate mode",-1,match(72.0,.30,false));
         check("too late even in flexible mode",-1,match(60.0,2.95,true));
         check("accurate mode is less forgiving",-1,match(67.0,1.78,false));
@@ -32,6 +34,6 @@ public final class NoteTimingMatcherTest {
             throw new AssertionError("Flexible note was marked missed too soon");
         if(!NoteTimingMatcher.shouldMiss(0,1,1.65,true))
             throw new AssertionError("Flexible note was not marked missed");
-        System.out.println("NoteTimingMatcher: all 11 timing checks passed");
+        System.out.println("NoteTimingMatcher: all 13 timing checks passed");
     }
 }
