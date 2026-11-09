@@ -39,6 +39,7 @@ public final class MainActivity extends Activity {
     private final int[] marks=new int[MELODY.length]; // 0 pending, 1 hit, 2 missed
     private boolean playing=false,everStarted=false,micOn=false,finished=false;
     private boolean soundEnabled=true;
+    private boolean flexibleTiming=true; // default for children ages 6–9
     private int bpm=72;
     private double beat=-4,lastPitch=-1,signalRms=0;
     private double lastPitchHz=-1,lastPitchConfidence=0;
@@ -53,11 +54,15 @@ public final class MainActivity extends Activity {
             if(playing && player!=null){
                 beat=player.getBeatPosition();
                 if(beat>=0){
-                    for(int i=0;i<MELODY.length;i++)if(marks[i]==0 && beat>STARTS[i]+LENGTHS[i]-.02){marks[i]=2;}
+                    for(int i=0;i<MELODY.length;i++)
+                        if(marks[i]==0 && NoteTimingMatcher.shouldMiss(STARTS[i],LENGTHS[i],beat,flexibleTiming))marks[i]=2;
                     current=0;
                     while(current<MELODY.length-1 && beat>=STARTS[current]+LENGTHS[current])current++;
                 }
-                if(beat>=16){playing=false;finished=true;status="כל הכבוד! סיימת את השיר!";player.pause();}
+                if(beat>=16){
+                    for(int i=0;i<marks.length;i++)if(marks[i]==0)marks[i]=2;
+                    playing=false;finished=true;status="כל הכבוד! סיימת את השיר!";player.pause();
+                }
             }
             if(gameView!=null)gameView.invalidate();
             mainHandler.postDelayed(this,33);
@@ -119,16 +124,23 @@ public final class MainActivity extends Activity {
         lastPitchHz=hz;
         lastPitch=midi;
         lastPitchAt=SystemClock.elapsedRealtime();
-        if(!playing || beat<0 || beat>=16 || !micOn)return;
-        if(current>=MELODY.length || marks[current]!=0)return;
-        int target=MELODY[current];
-        if(Math.abs(midi-target)>.55)return; // +/- 55 cents for device calibration
-        if(beat < STARTS[current]-.12 || beat > STARTS[current]+LENGTHS[current]-.03)return;
+        if(!playing || !micOn || beat>=16 ||
+                beat< -NoteTimingMatcher.earlyGrace(flexibleTiming))return;
+        int hit=NoteTimingMatcher.findMatch(MELODY,STARTS,LENGTHS,marks,
+                midi,beat,bpm,flexibleTiming);
+        if(hit<0)return;
         long now=SystemClock.elapsedRealtime();
-        if(now-lastHitAt<260)return; // reject retriggered sustain
-        if(lastHitMidi==target && !attack && beat-STARTS[current]<.17)return;
-        marks[current]=1;lastHitMidi=target;lastHitAt=now;
-        status="מעולה! ניגנת " + name(target) + "!";
+        if(now-lastHitAt<190)return; // Ignore duplicate callbacks from the same strike.
+        int target=MELODY[hit];
+        long repeatSpacing=(long)(60000.0/bpm * 0.63);
+        if(lastHitMidi==target && !attack && now-lastHitAt<repeatSpacing)return;
+        marks[hit]=1;
+        lastHitMidi=target;
+        lastHitAt=now;
+        boolean highOctave=Math.abs(midi-target-12.0)<.48;
+        status=highOctave
+                ? "נכון! "+name(target)+" באוקטבה גבוהה יותר"
+                : "מעולה! ניגנת "+name(target)+"! ✓";
         gameView.invalidate();
     }
     private static String name(int midi){return NAMES[diatonicIndex(midi)];}
@@ -200,7 +212,7 @@ public final class MainActivity extends Activity {
 
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF();
+        private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF(),flexibleRect=new RectF();
         private float scale=1,logicalWidth=1080;
         GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         @Override protected void onDraw(Canvas canvas){
@@ -219,7 +231,7 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano TEST v0.3",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano TEST v0.4",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
             text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
@@ -231,6 +243,11 @@ public final class MainActivity extends Activity {
             float x=38,r=logicalWidth-38;
             round(c,x,160,r,391,18,0xffffffff);
             text(c,"🎼  התווים שלי",r-22,186,16,0xff514475,true,Paint.Align.RIGHT);
+            float center=(x+r)/2;
+            flexibleRect.set(center-100,164,center+100,200);
+            button(c,flexibleRect,flexibleTiming?"✓ מצב גמיש":"🎯 מצב מדויק",
+                    flexibleTiming?0xffe0f8ed:0xffeeeafa,
+                    flexibleTiming?0xff188c69:0xff6549b4);
             String n=beat<0?"מוכנים?":name(MELODY[current]);
             text(c,"התו עכשיו: " + n,x+23,186,16,0xff704dd0,true,Paint.Align.LEFT);
             float top=218,sep=21,bottom=top+4*sep;
@@ -333,6 +350,11 @@ public final class MainActivity extends Activity {
                 diagnosticsMode=!diagnosticsMode;
                 if(!micOn)requestMicrophone();
                 status=diagnosticsMode?"בדיקת מיקרופון ללא ליווי: נגנו דו אמצעי":"מוכנים לנגן עם הליווי";
+            }
+            else if(flexibleRect.contains(x,y)){
+                flexibleTiming=!flexibleTiming;
+                status=flexibleTiming?"מצב גמיש: אפשר לנגן מעט לפני או אחרי הקצב"
+                    :"מצב מדויק: חלון הזמן מצומצם יותר";
             }
             else if(soundRect.contains(x,y)){
                 soundEnabled=!soundEnabled;
