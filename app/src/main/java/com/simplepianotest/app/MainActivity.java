@@ -2,6 +2,7 @@ package com.simplepianotest.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -31,6 +32,7 @@ public final class MainActivity extends Activity {
 
     private GameView gameView;
     private BackingPlayer player;
+    private String audioError="";
     private PitchDetector pitchDetector;
     private final Handler mainHandler=new Handler(Looper.getMainLooper());
     private final int[] marks=new int[MELODY.length]; // 0 pending, 1 hit, 2 missed
@@ -65,7 +67,15 @@ public final class MainActivity extends Activity {
         immersive();
         gameView=new GameView();setContentView(gameView);
         mainHandler.post(ticker);
-        try{player=new BackingPlayer(bpm);player.setVolume(soundEnabled?0.65f:0f);}catch(Exception e){status="שגיאה בהפעלת הליווי: " + e.getMessage();}
+        try {
+            player=new BackingPlayer(this,bpm);
+            player.setVolume(soundEnabled?0.65f:0f);
+            audioError="";
+        } catch(Exception e) {
+            player=null;
+            audioError=e.toString();
+            status="שגיאה באתחול הליווי: "+audioError;
+        }
         requestMicrophone();
     }
     private void immersive(){
@@ -119,17 +129,35 @@ public final class MainActivity extends Activity {
     }
     private static int color(int midi){return COLORS[diatonicIndex(midi)];}
     private void playPause(){
-        if(player==null){status="אי אפשר להפעיל ליווי. בדקו שמע במכשיר.";return;}
+        if(player==null) {
+            showAudioFailure("לא ניתן להפעיל את נגן הליווי",audioError);
+            return;
+        }
         if(finished){reset();}
         if(playing){player.pause();playing=false;status="הלהקה מושהית. נמשיך כשתרצה.";}
         else{
             if(!everStarted){everStarted=true;beat=-4;}
-            player.play();playing=true;status="הקשב לספירה ואז נגן את התו המואר!";
+            try {
+                player.play();playing=true;
+                status="הקשב לספירה ואז נגן את התו המואר!";
+                audioError="";
+            } catch(Exception e) {
+                playing=false;everStarted=false;
+                audioError=e.toString();
+                showAudioFailure("הפעלת הליווי נכשלה",audioError);
+            }
         }
         gameView.invalidate();
     }
     private void reset(){
-        if(player!=null)player.restart();
+        if(player!=null) {
+            try{player.restart();}
+            catch(Exception e){
+                audioError=e.toString();
+                player.close();player=null;
+                showAudioFailure("איפוס הליווי נכשל",audioError);
+            }
+        }
         playing=false;everStarted=false;finished=false;beat=-4;current=0;lastHitMidi=-1;lastHitAt=0;
         for(int i=0;i<marks.length;i++)marks[i]=0;
         status="מוכנים? ארבע פעימות ונתחיל!";
@@ -139,7 +167,22 @@ public final class MainActivity extends Activity {
         if(newBpm==bpm)return;
         reset();bpm=newBpm;
         if(player!=null)player.close();
-        try{player=new BackingPlayer(bpm);player.setVolume(soundEnabled?0.65f:0f);}catch(Exception e){player=null;status="שגיאה בהכנת הליווי";}
+        try {
+            player=new BackingPlayer(this,bpm);
+            player.setVolume(soundEnabled?0.65f:0f);
+            audioError="";
+        } catch(Exception e) {
+            player=null;
+            audioError=e.toString();
+            status="שגיאה בהכנת הליווי: "+audioError;
+        }
+    }
+    private void showAudioFailure(String title,String details) {
+        String message=(details==null || details.isEmpty())?"Audio playback unavailable":details;
+        status=title+": "+message;
+        if(gameView!=null)gameView.invalidate();
+        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+            .setPositiveButton("סגירה",(d,w)->d.dismiss()).show();
     }
     private int hits(){int n=0;for(int v:marks)if(v==1)n++;return n;}
     @Override public void onPause(){super.onPause();pausedByLifecycle=playing;if(playing)playPause();if(pitchDetector!=null)pitchDetector.stop();micOn=false;}
@@ -167,7 +210,7 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano TEST",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano TEST v0.2",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
             text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
