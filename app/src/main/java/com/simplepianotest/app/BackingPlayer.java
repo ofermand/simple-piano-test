@@ -81,6 +81,46 @@ final class BackingPlayer {
         streamStarted = false;
     }
 
+    private static double freq(int midi) { return 440.0 * Math.pow(2, (midi - 69) / 12.0); }
+    private static void addPad(float[] mix, double start, int note, double duration, float amp) {
+        int first = (int)(start * SR); int length = Math.min(mix.length - first, (int)(duration * SR));
+        double f = freq(note);
+        for (int i = 0; i < length; i++) {
+            double t = i / (double) SR;
+            double envelope = Math.min(1, t / .22) * Math.min(1, (duration - t) / .38);
+            mix[first + i] += (float)(amp * envelope * (Math.sin(2 * Math.PI * f * t) + .14 * Math.sin(4 * Math.PI * f * t)));
+        }
+    }
+    private static void addBass(float[] mix, double start, int note, double duration) {
+        int first = (int)(start * SR); int len = Math.min(mix.length - first, (int)(duration * SR));
+        double f = freq(note);
+        for (int i = 0; i < len; i++) {
+            double t = i / (double) SR, env = Math.exp(-t * 4.5);
+            mix[first + i] += (float)(.115 * env * Math.sin(2 * Math.PI * f * t));
+        }
+    }
+    private static void addKick(float[] mix, double start) {
+        int first = (int)(start * SR);int len=Math.min((int)(SR*.2),mix.length-first);
+        for(int i=0;i<len;i++) { double t=i/(double)SR; mix[first+i]+=(float)(.17*Math.exp(-t*25)*Math.sin(2*Math.PI*(70-25*t)*t)); }
+    }
+    private static void addSnare(float[] mix, double start, Random r) {
+        int first = (int)(start*SR); int len=Math.min((int)(SR*.13),mix.length-first);
+        double smooth=0;
+        for(int i=0;i<len;i++) { double t=i/(double)SR; double n=r.nextDouble()*2-1; smooth=.75*smooth+.25*n;
+            mix[first+i]+=(float)(.045*Math.exp(-t*29)*(n-smooth)); }
+    }
+    private static void addHat(float[] mix, double start, Random r) {
+        int first=(int)(start*SR); int len=Math.min((int)(SR*.055),mix.length-first);
+        double prev=0;
+        for(int i=0;i<len;i++) { double t=i/(double)SR;double n=r.nextDouble()*2-1;
+            mix[first+i]+=(float)(.023*Math.exp(-t*65)*(n-prev));prev=n; }
+    }
+    private static void addCountIn(float[] mix, double start, boolean accent) {
+        int first=(int)(start*SR); int len=Math.min((int)(SR*.08),mix.length-first);
+        for(int i=0;i<len;i++) {double t=i/(double)SR;
+            mix[first+i]+=(float)((accent?.12:.085)*Math.exp(-t*45)*Math.sin(2*Math.PI*(accent?1000:750)*t));
+        }
+    }
     void setVolume(float newVolume) {
         volume = newVolume;
         if (track != null) track.setVolume(newVolume);
@@ -96,11 +136,15 @@ final class BackingPlayer {
         writerThread = new Thread(() -> {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
             int offset = 0;
-            while (generation == streamGeneration && offset < pcm.length) {
-                int n = output.write(pcm, offset, Math.min(2048, pcm.length - offset),
-                        AudioTrack.WRITE_BLOCKING);
-                if (n <= 0) break;
-                offset += n;
+            try {
+                while (generation == streamGeneration && offset < pcm.length) {
+                    int n = output.write(pcm, offset, Math.min(2048, pcm.length - offset),
+                            AudioTrack.WRITE_BLOCKING);
+                    if (n <= 0) break;
+                    offset += n;
+                }
+            } catch (IllegalStateException ignored) {
+                // The player can be released while the audio writer is stopping.
             }
         }, "SimplePiano-BackingWriter");
         writerThread.start();
