@@ -1,84 +1,101 @@
 package com.simplepianotest.app;
 
+import android.content.Context;
 import android.media.AudioAttributes;
-import android.media.AudioFormat;
-import android.media.AudioTrack;
-import android.os.Process;
-
+import android.media.MediaPlayer;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.Random;
 
-/** A small, self-contained accompaniment synthesizer. No audio assets or network needed. */
+/**
+ * Device-compatible accompaniment using a locally generated PCM WAV file
+ * and Android MediaPlayer. This avoids AudioTrack initialization limits
+ * on some phones while keeping timing tied to the actual audio position.
+ */
 final class BackingPlayer {
     private static final int SR = 22050;
     private static final int BEATS = 16;
     private static final int COUNT_IN = 4;
     private final int bpm;
-    private AudioTrack track;
-    private final short[] pcm;
-    private Thread writerThread;
-    private volatile int streamGeneration = 0;
-    private boolean streamStarted = false;
-    private float volume = 1.0f;
+    private final File waveFile;
+    private MediaPlayer mediaPlayer;
+    private float volume=0.65f;
 
-    BackingPlayer(int bpm) {
-        this.bpm = bpm;
-        final int frames = (int) Math.ceil((BEATS + COUNT_IN) * (60.0 / bpm) * SR) + SR / 8;
-        float[] mix = new float[frames];
-        double beatSec = 60.0 / bpm;
-        int[][] chords = {{48, 52, 55}, {41, 45, 48}, {41, 45, 48}, {48, 52, 55}};
-        for (int bar = 0; bar < 4; bar++) {
-            double t = (COUNT_IN + bar * 4) * beatSec;
-            for (int note : chords[bar]) addPad(mix, t, note, 3.7 * beatSec, 0.036f);
-        }
-        int[] bass = {36,36,43,43,45,45,43,43,41,41,40,40,43,43,36,36};
-        Random random = new Random(10);
-        for (int b = 0; b < BEATS; b++) {
-            double t = (COUNT_IN + b) * beatSec;
-            if (b % 2 == 0) addBass(mix, t, bass[b], .50 * beatSec);
-            if (b % 4 == 0) addKick(mix, t);
-            if (b % 4 == 2) addSnare(mix, t, random);
-            addHat(mix, t, random);
-        }
-        for (int b=0;b<COUNT_IN;b++) addCountIn(mix, b*beatSec, b==0);
-        pcm = new short[mix.length];
-        for (int i = 0; i < mix.length; i++) {
-            double shaped = Math.tanh(mix[i] * 1.2);
-            pcm[i] = (short) Math.round(Math.max(-1.0, Math.min(1.0, shaped)) * 28000);
-        }
-        initializeStreamingTrack();
+    BackingPlayer(Context context, int bpm) throws IOException {
+        this.bpm=bpm;
+        waveFile=new File(context.getCacheDir(), "simplepiano_backing_"+bpm+".wav");
+        generateWav();
+        preparePlayer();
     }
 
-    // MODE_STATIC requires Android to reserve the complete 15–20 second song as a
-    // device audio buffer. Some devices (including Samsung models) reject that size.
-    // MODE_STREAM reserves only a short buffer, filled by a dedicated audio thread.
-    private void initializeStreamingTrack() {
-        int minBuffer = AudioTrack.getMinBufferSize(SR, AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT);
-        if (minBuffer <= 0) {
-            throw new IllegalStateException("Unsupported audio output configuration: " + minBuffer);
+    private void generateWav() throws IOException {
+        final int frames=(int)Math.ceil((BEATS+COUNT_IN)*(60.0/bpm)*SR)+SR/8;
+        float[] mix=new float[frames];
+        double beatSec=60.0/bpm;
+        int[][] chords={{48,52,55},{41,45,48},{41,45,48},{48,52,55}};
+        for(int bar=0;bar<4;bar++) {
+            double t=(COUNT_IN+bar*4)*beatSec;
+            for(int note:chords[bar]) addPad(mix,t,note,3.7*beatSec,0.036f);
         }
-        AudioAttributes attributes = new AudioAttributes.Builder()
+        int[] bass={36,36,43,43,45,45,43,43,41,41,40,40,43,43,36,36};
+        Random random=new Random(10);
+        for(int b=0;b<BEATS;b++) {
+            double t=(COUNT_IN+b)*beatSec;
+            if(b%2==0)addBass(mix,t,bass[b],.50*beatSec);
+            if(b%4==0)addKick(mix,t);
+            if(b%4==2)addSnare(mix,t,random);
+            addHat(mix,t,random);
+        }
+        for(int b=0;b<COUNT_IN;b++)addCountIn(mix,b*beatSec,b==0);
+
+        // Write little-endian 16-bit mono WAV. Generated only in app's private cache.
+        int bytes=frames*2;
+        try(FileOutputStream out=new FileOutputStream(waveFile)) {
+            out.write(new byte[]{'R','I','F','F'});
+            writeIntLE(out,36+bytes);
+            out.write(new byte[]{'W','A','V','E','f','m','t',' '});
+            writeIntLE(out,16);
+            writeShortLE(out,1); // PCM
+            writeShortLE(out,1); // mono
+            writeIntLE(out,SR);
+            writeIntLE(out,SR*2);
+            writeShortLE(out,2);
+            writeShortLE(out,16);
+            out.write(new byte[]{'d','a','t','a'});
+            writeIntLE(out,bytes);
+            byte[] block=new byte[8192];int used=0;
+            for(float value:mix){
+                double shaped=Math.tanh(value*1.2);
+                short sample=(short)Math.round(Math.max(-1,Math.min(1,shaped))*28000);
+                block[used++]=(byte)(sample&0xff);
+                block[used++]=(byte)((sample>>>8)&0xff);
+                if(used>=block.length){out.write(block,0,used);used=0;}
+            }
+            if(used>0)out.write(block,0,used);
+        }
+    }
+    private static void writeIntLE(FileOutputStream out,int v)throws IOException {
+        out.write(v&255);out.write((v>>>8)&255);out.write((v>>>16)&255);out.write((v>>>24)&255);
+    }
+    private static void writeShortLE(FileOutputStream out,int v)throws IOException {
+        out.write(v&255);out.write((v>>>8)&255);
+    }
+
+    private void preparePlayer() throws IOException {
+        MediaPlayer p=new MediaPlayer();
+        try {
+            p.setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build();
-        AudioFormat format = new AudioFormat.Builder()
-                .setSampleRate(SR)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build();
-        track = new AudioTrack.Builder()
-                .setAudioAttributes(attributes)
-                .setAudioFormat(format)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(Math.max(minBuffer, SR / 2))
-                .build();
-        if (track.getState() != AudioTrack.STATE_INITIALIZED) {
-            track.release();
-            track = null;
-            throw new IllegalStateException("Streaming AudioTrack initialization failed");
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            p.setDataSource(waveFile.getAbsolutePath());
+            p.prepare();
+            p.setVolume(volume,volume);
+            mediaPlayer=p;
+        }catch(IOException | RuntimeException ex){
+            p.release();
+            throw ex;
         }
-        track.setVolume(volume);
-        streamStarted = false;
     }
 
     private static double freq(int midi) { return 440.0 * Math.pow(2, (midi - 69) / 12.0); }
@@ -121,72 +138,28 @@ final class BackingPlayer {
             mix[first+i]+=(float)((accent?.12:.085)*Math.exp(-t*45)*Math.sin(2*Math.PI*(accent?1000:750)*t));
         }
     }
-    void setVolume(float newVolume) {
-        volume = newVolume;
-        if (track != null) track.setVolume(newVolume);
-    }
 
+    void setVolume(float v) {
+        volume=v;
+        if(mediaPlayer!=null) mediaPlayer.setVolume(v,v);
+    }
     void play() {
-        final AudioTrack output = track;
-        if (output == null) throw new IllegalStateException("Backing audio is unavailable");
-        output.play();
-        if (streamStarted) return; // Resume the existing playback position.
-        streamStarted = true;
-        final int generation = ++streamGeneration;
-        writerThread = new Thread(() -> {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
-            int offset = 0;
-            try {
-                while (generation == streamGeneration && offset < pcm.length) {
-                    int n = output.write(pcm, offset, Math.min(2048, pcm.length - offset),
-                            AudioTrack.WRITE_BLOCKING);
-                    if (n <= 0) break;
-                    offset += n;
-                }
-            } catch (IllegalStateException ignored) {
-                // The player can be released while the audio writer is stopping.
-            }
-        }, "SimplePiano-BackingWriter");
-        writerThread.start();
+        if(mediaPlayer==null)throw new IllegalStateException("MediaPlayer is null");
+        mediaPlayer.start();
     }
-
     void pause() {
-        if (track != null && track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING)
-            track.pause();
+        if(mediaPlayer!=null && mediaPlayer.isPlaying())mediaPlayer.pause();
     }
-
     void restart() {
-        discardTrack();
-        initializeStreamingTrack();
+        if(mediaPlayer!=null){mediaPlayer.release();mediaPlayer=null;}
+        try {preparePlayer();}
+        catch(IOException ex){throw new IllegalStateException("Unable to restart backing WAV",ex);}
     }
-
     double getBeatPosition() {
-        AudioTrack t = track;
-        return t == null ? 0 : Math.min(16.0,
-                (t.getPlaybackHeadPosition() / (double) SR) * bpm / 60.0 - COUNT_IN);
+        if(mediaPlayer==null)return 0;
+        return Math.min(16.0,mediaPlayer.getCurrentPosition()/(double)1000*bpm/60.0-COUNT_IN);
     }
-
-    private void discardTrack() {
-        ++streamGeneration;
-        AudioTrack old = track;
-        track = null;
-        if (old != null) {
-            try { old.pause(); } catch (Exception ignored) {}
-            try { old.flush(); } catch (Exception ignored) {}
-            try { old.stop(); } catch (Exception ignored) {}
-            old.release();
-        }
-        Thread writer = writerThread;
-        writerThread = null;
-        if (writer != null && writer != Thread.currentThread()) {
-            try { writer.join(250); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        streamStarted = false;
-    }
-
     void close() {
-        discardTrack();
+        if(mediaPlayer!=null){mediaPlayer.release();mediaPlayer=null;}
     }
 }
