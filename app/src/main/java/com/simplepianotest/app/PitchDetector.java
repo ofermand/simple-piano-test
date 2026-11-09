@@ -151,7 +151,8 @@ final class PitchDetector {
     }
     private static Result yin(double[] x){
         int half=x.length/2;
-        int minTau=SR/900,maxTau=SR/205;
+        // Include the octave below middle C (C3 ~= 131 Hz).
+        int minTau=SR/900,maxTau=SR/110;
         double[] normalized=new double[maxTau+2];
         double sum=0;
         for(int tau=1;tau<=maxTau+1;tau++){
