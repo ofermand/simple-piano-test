@@ -1,0 +1,265 @@
+package com.simplepianotest.app;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+
+/** Simple Piano TEST: native Android microphone + score + backing band. */
+public final class MainActivity extends Activity {
+    private static final int RECORD_PERMISSION = 77;
+    private static final int[] MELODY={60,60,67,67,69,69,67,65,65,64,64,62,62,60};
+    private static final int[] LENGTHS={1,1,1,1,1,1,2,1,1,1,1,1,1,2};
+    private static final int[] STARTS=new int[MELODY.length];
+    static {int t=0;for(int i=0;i<MELODY.length;i++){STARTS[i]=t;t+=LENGTHS[i];}}
+    private static final String[] NAMES={"דו","רה","מי","פה","סול","לה","סי"};
+    private static final int[] COLORS={0xfff46a7b,0xffe99b49,0xffd5b52d,0xff2ac48f,0xff23acae,0xff5089e5,0xff9a71da};
+
+    private GameView gameView;
+    private BackingPlayer player;
+    private PitchDetector pitchDetector;
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private final int[] marks=new int[MELODY.length]; // 0 pending, 1 hit, 2 missed
+    private boolean playing=false,everStarted=false,micOn=false,finished=false;
+    private boolean soundEnabled=true;
+    private int bpm=72;
+    private double beat=-4,lastPitch=-1,signalRms=0;
+    private int current=0,lastHitMidi=-1;
+    private long lastHitAt=0,lastPitchAt=0;
+    private String status="הפסנתר שלך מנגן את המלודיה, אנחנו את הליווי";
+    private boolean pausedByLifecycle=false;
+
+    private final Runnable ticker=new Runnable(){
+        @Override public void run(){
+            if(playing && player!=null){
+                beat=player.getBeatPosition();
+                if(beat>=0){
+                    for(int i=0;i<MELODY.length;i++)if(marks[i]==0 && beat>STARTS[i]+LENGTHS[i]-.02){marks[i]=2;}
+                    current=0;
+                    while(current<MELODY.length-1 && beat>=STARTS[current]+LENGTHS[current])current++;
+                }
+                if(beat>=16){playing=false;finished=true;status="כל הכבוד! סיימת את השיר!";player.pause();}
+            }
+            if(gameView!=null)gameView.invalidate();
+            mainHandler.postDelayed(this,33);
+        }
+    };
+
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        immersive();
+        gameView=new GameView();setContentView(gameView);
+        mainHandler.post(ticker);
+        try{player=new BackingPlayer(bpm);player.setVolume(soundEnabled?0.65f:0f);}catch(Exception e){status="שגיאה בהפעלת הליווי: " + e.getMessage();}
+        requestMicrophone();
+    }
+    private void immersive(){
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+    private void requestMicrophone(){
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED){startMicrophone();}
+        else requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},RECORD_PERMISSION);
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] grants){
+        super.onRequestPermissionsResult(code,permissions,grants);
+        if(code==RECORD_PERMISSION){
+            if(grants.length>0 && grants[0]==PackageManager.PERMISSION_GRANTED)startMicrophone();
+            else{micOn=false;status="צריך לאשר הרשאת מיקרופון כדי לזהות נגינה";gameView.invalidate();}
+        }
+    }
+    private void startMicrophone(){
+        if(pitchDetector==null)pitchDetector=new PitchDetector((hz,confidence,rms,attack)->
+            mainHandler.post(()->onPitch(hz,confidence,rms,attack)));
+        micOn=pitchDetector.start();
+        if(!micOn)status="המיקרופון אינו זמין. בדקו הרשאות ומכשיר.";
+        if(gameView!=null)gameView.invalidate();
+    }
+    private void onPitch(double hz,double confidence,double rms,boolean attack){
+        if(isFinishing()||isDestroyed())return;
+        signalRms=rms;
+        if(hz<0 || confidence<.68){
+            if(SystemClock.elapsedRealtime()-lastPitchAt>300)lastPitch=-1;
+            return;
+        }
+        double midi=69+12*Math.log(hz/440.0)/Math.log(2);
+        lastPitch=midi;lastPitchAt=SystemClock.elapsedRealtime();
+        if(!playing || beat<0 || beat>=16 || !micOn)return;
+        if(current>=MELODY.length || marks[current]!=0)return;
+        int target=MELODY[current];
+        if(Math.abs(midi-target)>.42)return; // +/- 42 cents
+        if(beat < STARTS[current]-.12 || beat > STARTS[current]+LENGTHS[current]-.03)return;
+        long now=SystemClock.elapsedRealtime();
+        if(now-lastHitAt<260)return; // reject retriggered sustain
+        if(lastHitMidi==target && !attack && beat-STARTS[current]<.17)return;
+        marks[current]=1;lastHitMidi=target;lastHitAt=now;
+        status="מעולה! ניגנת " + name(target) + "!";
+        gameView.invalidate();
+    }
+    private static String name(int midi){return NAMES[diatonicIndex(midi)];}
+    private static int diatonicIndex(int midi){
+        switch(Math.floorMod(midi,12)){case 0:return 0;case 2:return 1;case 4:return 2;case 5:return 3;case 7:return 4;case 9:return 5;case 11:return 6;default:return 0;}
+    }
+    private static int color(int midi){return COLORS[diatonicIndex(midi)];}
+    private void playPause(){
+        if(player==null){status="אי אפשר להפעיל ליווי. בדקו שמע במכשיר.";return;}
+        if(finished){reset();}
+        if(playing){player.pause();playing=false;status="הלהקה מושהית. נמשיך כשתרצה.";}
+        else{
+            if(!everStarted){everStarted=true;beat=-4;}
+            player.play();playing=true;status="הקשב לספירה ואז נגן את התו המואר!";
+        }
+        gameView.invalidate();
+    }
+    private void reset(){
+        if(player!=null)player.restart();
+        playing=false;everStarted=false;finished=false;beat=-4;current=0;lastHitMidi=-1;lastHitAt=0;
+        for(int i=0;i<marks.length;i++)marks[i]=0;
+        status="מוכנים? ארבע פעימות ונתחיל!";
+        gameView.invalidate();
+    }
+    private void setBpm(int newBpm){
+        if(newBpm==bpm)return;
+        reset();bpm=newBpm;
+        if(player!=null)player.close();
+        try{player=new BackingPlayer(bpm);player.setVolume(soundEnabled?0.65f:0f);}catch(Exception e){player=null;status="שגיאה בהכנת הליווי";}
+    }
+    private int hits(){int n=0;for(int v:marks)if(v==1)n++;return n;}
+    @Override public void onPause(){super.onPause();pausedByLifecycle=playing;if(playing)playPause();if(pitchDetector!=null)pitchDetector.stop();micOn=false;}
+    @Override public void onResume(){super.onResume();immersive();if(gameView!=null && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED && !micOn)startMicrophone();}
+    @Override public void onDestroy(){mainHandler.removeCallbacks(ticker);if(pitchDetector!=null)pitchDetector.stop();if(player!=null)player.close();super.onDestroy();}
+
+    private final class GameView extends View {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF();
+        private float scale=1,logicalWidth=1080;
+        GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);
+            scale=getHeight()/600f;logicalWidth=getWidth()/scale;
+            canvas.save();canvas.scale(scale,scale);
+            canvas.drawColor(0xfff0effa);
+            round(canvas,15,13,logicalWidth-15,489,23,0xff113747);
+            Paint gradient=new Paint(Paint.ANTI_ALIAS_FLAG);
+            gradient.setShader(new LinearGradient(0,10,logicalWidth,493,0xff102d4b,0xff236463,Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(new RectF(15,13,logicalWidth-15,489),23,23,gradient);
+            drawHeader(canvas);
+            if(finished)drawResult(canvas);else drawStaff(canvas);
+            drawControls(canvas);
+            canvas.restore();
+        }
+        private void drawHeader(Canvas c){
+            text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
+            text(c,"Simple Piano TEST",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
+            text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
+            float x=48,w=logicalWidth-96,y=120;
+            round(c,x,y,x+w,y+10,5,0x55ffffff);
+            if(beat>0)round(c,x,y,x+w*(float)Math.min(1,beat/16),y+10,5,0xff69e4c6);
+            text(c,beat<0 && playing?"מתחילים בעוד " +(int)Math.ceil(-beat)+"...":(finished?"הושלם":""+Math.round(Math.max(0,beat)/16*100)+"%"),logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
+        }
+        private void drawStaff(Canvas c){
+            float x=38,r=logicalWidth-38;
+            round(c,x,160,r,391,18,0xffffffff);
+            text(c,"🎼  התווים שלי",r-22,186,16,0xff514475,true,Paint.Align.RIGHT);
+            String n=beat<0?"מוכנים?":name(MELODY[current]);
+            text(c,"התו עכשיו: " + n,x+23,186,16,0xff704dd0,true,Paint.Align.LEFT);
+            float top=218,sep=21,bottom=top+4*sep;
+            for(int i=0;i<5;i++)line(c,x+26,top+i*sep,r-25,top+i*sep,0xffb2b0c0,1.6f);
+            float lineX=Math.min(logicalWidth*.30f,330),pxPerBeat=100;
+            // Subtle stationary play-head shows the exact beat to play.
+            line(c,lineX,206,lineX,346,0xff9b76ea,2.7f);
+            circle(c,lineX,209,7,0xff7653df);
+            // Draw notes with precise duration-based horizontal spacing.
+            for(int i=0;i<MELODY.length;i++){
+                float nx=lineX+(float)((STARTS[i]-Math.max(0,beat))*pxPerBeat);
+                if(beat<0)nx=lineX+STARTS[i]*pxPerBeat;
+                if(nx<x+63 || nx>r-39)continue;
+                int midi=MELODY[i],m=marks[i];
+                float ny=bottom+((64-midi)/2f)*sep;
+                // Absolute note positions (diatonic half-space steps).
+                switch(midi){case 60:ny=bottom+2*sep/2f;break;case 62:ny=bottom+sep/2f;break;
+                    case 64:ny=bottom;break;case 65:ny=bottom-sep/2f;break;
+                    case 67:ny=bottom-sep;break;case 69:ny=bottom-1.5f*sep;break;}
+                if(i==current && beat>=0){round(c,nx-34,193,nx+34,356,14,0xfff0e9ff);}
+                if(midi==60)line(c,nx-23,ny,nx+24,ny,0xff938a9e,2);
+                int clr=m==1?0xff24b28b:m==2?0xffe96c7d:color(midi);
+                p.reset();p.setAntiAlias(true);p.setColor(clr);p.setStyle(LENGTHS[i]==2&&m==0?Paint.Style.STROKE:Paint.Style.FILL);p.setStrokeWidth(3.2f);
+                c.save();c.rotate(-18,nx,ny);c.drawOval(new RectF(nx-17,ny-11,nx+17,ny+11),p);c.restore();
+                line(c,nx+14,ny-2,nx+14,ny-52,clr,3);
+                if(m==1){circle(c,nx+27,ny-32,13,0xff24b28b);text(c,"✓",nx+27,ny-27,17,Color.WHITE,true,Paint.Align.CENTER);}
+                if(m==2){circle(c,nx+27,ny-32,13,0xffe96c7d);text(c,"×",nx+27,ny-26,19,Color.WHITE,true,Paint.Align.CENTER);}
+                text(c,name(midi),nx,368,15,m==1?0xff168e6f:m==2?0xffd55a6c:0xff6a588d,true,Paint.Align.CENTER);
+            }
+            text(c,"🟣 התו הנוכחי     ● ירוק = הצלחה     ● אדום = פספוס",(x+r)/2,384,12,0xff8b8098,false,Paint.Align.CENTER);
+            String label=beat<0&&playing?"מתחילים עוד רגע...":status;
+            text(c,label,logicalWidth-43,435,21,0xffffffff,true,Paint.Align.RIGHT);
+            text(c,"✓  "+hits()+"  הצלחות      ✕  "+misses()+"  פספוסים",logicalWidth-43,465,15,0xffc4e7df,true,Paint.Align.RIGHT);
+            if(beat<0 && playing){
+                round(c,logicalWidth*.41f,240,logicalWidth*.59f,345,18,0xee7455e8);
+                text(c,""+(int)Math.max(1,Math.ceil(-beat)),logicalWidth*.5f,320,77,Color.WHITE,true,Paint.Align.CENTER);
+            }
+        }
+        private void drawResult(Canvas c){
+            text(c,"🏆  ⭐  🎉",logicalWidth/2,215,56,0xffffdb77,true,Paint.Align.CENTER);
+            text(c,"כל הכבוד! סיימת את השיר!",logicalWidth/2,273,34,Color.WHITE,true,Paint.Align.CENTER);
+            text(c,"ניגנת נכון "+hits()+" מתוך 14 תווים",logicalWidth/2,316,24,0xffc0f3de,true,Paint.Align.CENTER);
+            text(c,"אפשר לנגן שוב ולשפר את התוצאה",logicalWidth/2,364,18,0xffcce1ee,false,Paint.Align.CENTER);
+        }
+        private int misses(){int n=0;for(int v:marks)if(v==2)n++;return n;}
+        private void drawControls(Canvas c){
+            round(c,15,502,logicalWidth-15,585,17,0xffffffff);
+            float right=logicalWidth-40;
+            playRect.set(right-203,521,right,565);
+            button(c,playRect,finished?"▶  לנגן שוב":playing?"⏸  השהיה":everStarted?"▶  המשך":"▶  התחלה",0xff7555e8,Color.WHITE);
+            resetRect.set(right-311,521,right-215,565);button(c,resetRect,"↻  מחדש",0xffeeeaf8,0xff6a54b4);
+            normalRect.set(right-410,521,right-319,565);button(c,normalRect,"רגיל 96",bpm==96?0xff7555e8:0xffeeeaf8,bpm==96?Color.WHITE:0xff6a54b4);
+            slowRect.set(right-502,521,right-418,565);button(c,slowRect,"איטי 72",bpm==72?0xff7555e8:0xffeeeaf8,bpm==72?Color.WHITE:0xff6a54b4);
+            soundRect.set(35,521,117,565);button(c,soundRect,soundEnabled?"🔊  ON":"🔇  OFF",0xffeeeaf8,0xff6a54b4);
+            String detected=lastPitch<0 || SystemClock.elapsedRealtime()-lastPitchAt>600?"—":name((int)Math.round(lastPitch));
+            text(c,"🎙  נשמע: "+detected,138,540,16,micOn?0xff298f70:0xffc46173,true,Paint.Align.LEFT);
+            float meter=(float)Math.min(1,signalRms*13);
+            round(c,140,553,225,559,3,0xffe1dfed);round(c,140,553,140+85*meter,559,3,0xff40cba6);
+            permissionRect.set(123,514,275,577);
+        }
+        private void button(Canvas c,RectF r,String label,int bg,int fg){round(c,r.left,r.top,r.right,r.bottom,11,bg);text(c,label,r.centerX(),r.centerY()+6,17,fg,true,Paint.Align.CENTER);}
+        private void round(Canvas c,float x,float y,float r,float b,float radius,int color){p.reset();p.setAntiAlias(true);p.setColor(color);p.setStyle(Paint.Style.FILL);c.drawRoundRect(new RectF(x,y,r,b),radius,radius,p);}
+        private void circle(Canvas c,float x,float y,float rad,int col){p.reset();p.setAntiAlias(true);p.setColor(col);c.drawCircle(x,y,rad,p);}
+        private void line(Canvas c,float x1,float y1,float x2,float y2,int col,float stroke){p.reset();p.setAntiAlias(true);p.setColor(col);p.setStrokeWidth(stroke);c.drawLine(x1,y1,x2,y2,p);}
+        private void text(Canvas c,String s,float x,float y,float size,int color,boolean bold,Paint.Align align){
+            p.reset();p.setAntiAlias(true);p.setColor(color);p.setTextSize(size);
+            p.setTypeface(Typeface.create(bold?"sans-serif-medium":"sans-serif",bold?Typeface.BOLD:Typeface.NORMAL));
+            p.setTextAlign(align);c.drawText(s,x,y,p);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event){
+            if(event.getAction()!=MotionEvent.ACTION_UP)return true;
+            float x=event.getX()/scale,y=event.getY()/scale;
+            if(playRect.contains(x,y))playPause();
+            else if(resetRect.contains(x,y))reset();
+            else if(slowRect.contains(x,y))setBpm(72);
+            else if(normalRect.contains(x,y))setBpm(96);
+            else if(soundRect.contains(x,y)){
+                soundEnabled=!soundEnabled;
+                if(player!=null)player.setVolume(soundEnabled?0.65f:0f);
+            }else if(permissionRect.contains(x,y) && !micOn)requestMicrophone();
+            invalidate();return true;
+        }
+    }
+}
