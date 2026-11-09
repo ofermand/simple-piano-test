@@ -29,8 +29,14 @@ final class NoteTimingMatcher {
             // The beginner mode accepts the same named note one octave higher.
             // This helps children who have a shorter keyboard or start on C5.
             // It never accepts a different pitch class.
-            if(flexible) difference=Math.min(difference,
+            if(flexible) {
+                // The first song teaches pitch names. Accept the same pitch
+                // one octave above OR below in beginner mode.
+                difference=Math.min(difference,
                     Math.abs(detectedMidi - melody[i] - 12.0));
+                difference=Math.min(difference,
+                    Math.abs(detectedMidi - melody[i] + 12.0));
+            }
             if(difference > 0.48)continue;
             if(playedBeat < starts[i] - earlyGrace(flexible))continue;
             if(playedBeat > starts[i] + lengths[i] + lateGrace(flexible))continue;
