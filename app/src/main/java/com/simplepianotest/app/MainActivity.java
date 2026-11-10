@@ -24,10 +24,16 @@ import java.util.Locale;
 /** Simple Piano TEST: native Android microphone + score + backing band. */
 public final class MainActivity extends Activity {
     private static final int RECORD_PERMISSION = 77;
-    private static final int[] MELODY={60,60,67,67,69,69,67,65,65,64,64,62,62,60};
-    private static final int[] LENGTHS={1,1,1,1,1,1,2,1,1,1,1,1,1,2};
-    private static final int[] STARTS=new int[MELODY.length];
-    static {int t=0;for(int i=0;i<MELODY.length;i++){STARTS[i]=t;t+=LENGTHS[i];}}
+    private static final int[] MELODY=SongData.MELODY;
+    private static final int[] LENGTHS=SongData.LENGTHS;
+    private static final int[] STARTS=SongData.STARTS;
+    private static final int TOTAL_BEATS=SongData.TOTAL_BEATS;
+    private static final int[] PRACTICE={60,67,60,67};
+    private enum Phase { WELCOME, TEACH_C, TEACH_G, PRACTICE, SONG, RESULTS }
+    private Phase phase=Phase.WELCOME;
+    private boolean lessonRecognized=false;
+    private int practiceStep=0;
+    private long lastPracticeHitAt=0;
     private static final String[] NAMES={"דו","רה","מי","פה","סול","לה","סי"};
     private static final int[] COLORS={0xfff46a7b,0xffe99b49,0xffd5b52d,0xff2ac48f,0xff23acae,0xff5089e5,0xff9a71da};
 
@@ -36,7 +42,7 @@ public final class MainActivity extends Activity {
     private String audioError="";
     private PitchDetector pitchDetector;
     private final Handler mainHandler=new Handler(Looper.getMainLooper());
-    private final int[] marks=new int[MELODY.length]; // 0 pending, 1 hit, 2 missed
+    private final int[] marks=new int[MELODY.length]; // 0 pending, 1 child hit, 2 child missed, 3 app plays
     private boolean playing=false,everStarted=false,micOn=false,finished=false;
     // 0=silent, 1=quiet backing, 2=full volume.
     private int backingLevel=1;
@@ -55,17 +61,21 @@ public final class MainActivity extends Activity {
 
     private final Runnable ticker=new Runnable(){
         @Override public void run(){
-            if(playing && player!=null){
+            if(phase==Phase.SONG && playing && player!=null){
                 beat=player.getBeatPosition();
                 if(beat>=0){
                     for(int i=0;i<MELODY.length;i++)
-                        if(marks[i]==0 && NoteTimingMatcher.shouldMiss(STARTS[i],LENGTHS[i],beat,flexibleTiming))marks[i]=2;
+                        if(SongData.isChildNote(MELODY[i]) && marks[i]==0 &&
+                                NoteTimingMatcher.shouldMiss(STARTS[i],LENGTHS[i],beat,flexibleTiming))marks[i]=2;
                     current=0;
                     while(current<MELODY.length-1 && beat>=STARTS[current]+LENGTHS[current])current++;
                 }
-                if(beat>=16){
-                    for(int i=0;i<marks.length;i++)if(marks[i]==0)marks[i]=2;
-                    playing=false;finished=true;status="כל הכבוד! סיימת את השיר!";player.pause();
+                if(beat>=TOTAL_BEATS){
+                    for(int i=0;i<marks.length;i++)
+                        if(SongData.isChildNote(MELODY[i]) && marks[i]==0)marks[i]=2;
+                    playing=false;finished=true;phase=Phase.RESULTS;
+                    status="כל הכבוד! ניגנת שיר שלם!";
+                    player.pause();
                 }
             }
             if(gameView!=null)gameView.invalidate();
@@ -88,6 +98,7 @@ public final class MainActivity extends Activity {
             audioError=e.toString();
             status="שגיאה באתחול הליווי: "+audioError;
         }
+        status="מוכנים ללמוד שני תווים ולנגן שיר שלם?";
         requestMicrophone();
     }
     private void immersive(){
@@ -118,12 +129,12 @@ public final class MainActivity extends Activity {
         if(isFinishing()||isDestroyed())return;
         signalRms=rms;
         lastPitchConfidence=confidence;
-        if(playing && beat>=0 && beat<16)pitchWindows++;
+        if(playing && beat>=0 && beat<TOTAL_BEATS)pitchWindows++;
         if(hz<0 || confidence<.52){
             lastPitchHz=-1;
             if(SystemClock.elapsedRealtime()-lastPitchAt>500) {
                 lastPitch=-1;
-                if(playing && beat>=0 && beat<16)monitorReason="לא זוהה צליל יציב";
+                if(playing && beat>=0 && beat<TOTAL_BEATS)monitorReason="לא זוהה צליל יציב";
             }
             if(diagnosticsMode && gameView!=null)gameView.invalidate();
             return;
@@ -132,8 +143,13 @@ public final class MainActivity extends Activity {
         lastPitchHz=hz;
         lastPitch=midi;
         lastPitchAt=SystemClock.elapsedRealtime();
-        if(playing && beat>=0 && beat<16)stableWindows++;
-        if(!playing || !micOn || beat>=16 ||
+        if(playing && beat>=0 && beat<TOTAL_BEATS)stableWindows++;
+        // Short, rhythm-free lessons run before the song begins.
+        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G || phase==Phase.PRACTICE) {
+            onLessonPitch(midi,attack);
+            return;
+        }
+        if(phase!=Phase.SONG || !playing || !micOn || beat>=TOTAL_BEATS ||
                 beat< -NoteTimingMatcher.earlyGrace(flexibleTiming))return;
         int hit=NoteTimingMatcher.findMatch(MELODY,STARTS,LENGTHS,marks,
                 midi,beat,bpm,flexibleTiming);
@@ -169,12 +185,68 @@ public final class MainActivity extends Activity {
                 : "מעולה! ניגנת "+name(target)+"! ✓";
         gameView.invalidate();
     }
+    private boolean isMatchingPracticeNote(double detectedMidi,int target) {
+        double diff=Math.abs(detectedMidi-target);
+        diff=Math.min(diff,Math.abs(detectedMidi-target-12));
+        diff=Math.min(diff,Math.abs(detectedMidi-target+12));
+        return diff<0.55;
+    }
+    private void onLessonPitch(double midi,boolean attack) {
+        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G) {
+            int expected=phase==Phase.TEACH_C?60:67;
+            if(isMatchingPracticeNote(midi,expected)) {
+                lessonRecognized=true;
+                status="כל הכבוד! זיהיתי את "+name(expected)+" בפסנתר שלך!";
+                gameView.invalidate();
+            }
+            return;
+        }
+        if(phase==Phase.PRACTICE && practiceStep<PRACTICE.length) {
+            int expected=PRACTICE[practiceStep];
+            if(isMatchingPracticeNote(midi,expected)) {
+                long now=SystemClock.elapsedRealtime();
+                if(now-lastPracticeHitAt<350)return;
+                practiceStep++;
+                lastPracticeHitAt=now;
+                status=practiceStep==PRACTICE.length?
+                    "נהדר! סיימת לתרגל. עכשיו מנגנים את כל השיר!" :
+                    "יופי! עכשיו נגן "+name(PRACTICE[practiceStep]);
+                gameView.invalidate();
+            }
+        }
+    }
+    private void advanceLesson(){
+        if(phase==Phase.WELCOME){
+            phase=Phase.TEACH_C;
+            lessonRecognized=false;
+            status="נגן דו על הפסנתר כדי להתחיל";
+        }else if(phase==Phase.TEACH_C){
+            phase=Phase.TEACH_G;
+            lessonRecognized=false;
+            status="מצא את סול ונגן אותו";
+        }else if(phase==Phase.TEACH_G){
+            phase=Phase.PRACTICE;
+            practiceStep=0;
+            lastPracticeHitAt=0;
+            status="בוא נתרגל: דו, סול, דו, סול";
+        }else if(phase==Phase.PRACTICE){
+            phase=Phase.SONG;
+            reset();
+            playPause();
+        }
+        gameView.invalidate();
+    }
     private static String name(int midi){return NAMES[diatonicIndex(midi)];}
     private static int diatonicIndex(int midi){
         switch(Math.floorMod(midi,12)){case 0:return 0;case 2:return 1;case 4:return 2;case 5:return 3;case 7:return 4;case 9:return 5;case 11:return 6;default:return 0;}
     }
     private static int color(int midi){return COLORS[diatonicIndex(midi)];}
     private void playPause(){
+        if(phase==Phase.RESULTS){
+            phase=Phase.SONG;
+            reset();
+        }
+        if(phase!=Phase.SONG)return;
         diagnosticsMode=false;
         if(player==null) {
             showAudioFailure("לא ניתן להפעיל את נגן הליווי",audioError);
@@ -206,7 +278,8 @@ public final class MainActivity extends Activity {
             }
         }
         playing=false;everStarted=false;finished=false;beat=-4;current=0;lastHitMidi=-1;lastHitAt=0;
-        for(int i=0;i<marks.length;i++)marks[i]=0;
+        for(int i=0;i<marks.length;i++)
+            marks[i]=SongData.isChildNote(MELODY[i])?0:3;
         pitchWindows=stableWindows=wrongPitchWindows=timingWindows=0;
         monitorReason="ממתינים לנגינה";
         status="מוכנים? ארבע פעימות ונתחיל!";
@@ -259,7 +332,7 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano TEST v0.5",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano TEST v0.6",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
             text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
