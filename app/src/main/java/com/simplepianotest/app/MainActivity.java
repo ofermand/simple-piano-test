@@ -339,7 +339,7 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano TEST v0.6",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano TEST v0.7",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
             text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
@@ -373,33 +373,25 @@ public final class MainActivity extends Activity {
                 text(c,"🎶 שיר שלם",mid+107,366,17,0xff4678bd,true,Paint.Align.CENTER);
             }else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G) {
                 int target=phase==Phase.TEACH_C?60:67;
-                text(c,"היום פוגשים את "+name(target)+"!",mid,215,29,0xff554285,true,Paint.Align.CENTER);
-                text(c,phase==Phase.TEACH_C?
-                    "מצא זוג קלידים שחורים. דו הוא הקליד הלבן שמשמאלם.":
-                    "סול נמצא ארבעה קלידים לבנים מימין לדו.",
-                    mid,244,16,0xff6e6595,false,Paint.Align.CENTER);
-                drawKeyboard(c,mid,target);
-                text(c,lessonRecognized?"✓ כל הכבוד! זיהיתי את הצליל שלך.":
-                    "נגן את הקליד המואר בפסנתר שלך",
-                    mid,388,18,lessonRecognized?0xff179b73:0xff7665ab,
-                    true,Paint.Align.CENTER);
-            }else if(phase==Phase.PRACTICE){
-                text(c,"עכשיו מנגנים ארבעה תווים!",mid,221,29,0xff554285,true,Paint.Align.CENTER);
-                text(c,"בלי קצב ובלי לחץ. נגן לפי הסדר.",mid,257,18,0xff786e9a,false,Paint.Align.CENTER);
-                float start=mid-267,spacing=178;
+                text(c,"לומדים את התו "+name(target)+"!",mid,206,28,0xff554285,true,Paint.Align.CENTER);
+                text(c,"אותו התו מופיע גם על החמשה וגם על הפסנתר",mid,238,17,
+                    0xff6e6595,false,Paint.Align.CENTER);
+                drawStaffKeyboardPair(c,mid,target);
+            }else if(phase==Phase.PRACTICE) {
+                int target=PRACTICE[Math.min(practiceStep,PRACTICE.length-1)];
+                text(c,"קרא את התו ונגן אותו!",mid,205,27,0xff554285,true,Paint.Align.CENTER);
+                text(c,practiceStep>=PRACTICE.length?
+                    "מצוין! אתה כבר מכיר את דו וסול על החמשה.":
+                    "תרגיל "+(practiceStep+1)+" מתוך "+PRACTICE.length+
+                    "  •  התו הבא: "+name(target),
+                    mid,237,17,0xff736899,false,Paint.Align.CENTER);
                 for(int i=0;i<PRACTICE.length;i++){
-                    float center=start+i*spacing;
-                    int bg=i<practiceStep?0xffe0f8ed:
-                        i==practiceStep?0xffe5d9fc:0xfff0eef7;
-                    round(c,center-62,279,center+62,353,17,bg);
-                    text(c,i<practiceStep?"✓":name(PRACTICE[i]),
-                        center,328,27,i<practiceStep?0xff218e6e:
-                        i==practiceStep?0xff7252c5:0xff968bac,true,Paint.Align.CENTER);
+                    float bx=mid+(i-1.5f)*50;
+                    circle(c,bx,255,9,i<practiceStep?0xff27b48d:
+                        i==practiceStep?0xff7f5bdf:0xffded9eb);
+                    if(i<practiceStep)text(c,"✓",bx,260,12,Color.WHITE,true,Paint.Align.CENTER);
                 }
-                text(c,practiceStep>=PRACTICE.length?"מוכנים! עכשיו תנגן את כל השיר":
-                    "עכשיו נגן: "+name(PRACTICE[practiceStep]),mid,389,19,
-                    practiceStep>=PRACTICE.length?0xff1e956f:0xff7252c5,
-                    true,Paint.Align.CENTER);
+                drawStaffKeyboardPair(c,mid,target);
             }
             text(c,status,logicalWidth-43,435,18,0xffffffff,true,Paint.Align.RIGHT);
             String detected=lastPitch<0 || SystemClock.elapsedRealtime()-lastPitchAt>650?
@@ -407,22 +399,60 @@ public final class MainActivity extends Activity {
             text(c,"🎙 המיקרופון שומע: "+detected+"     "+(micOn?"מחובר":"לא פעיל"),
                 logicalWidth-43,470,15,micOn?0xffb6efde:0xffffaeb6,true,Paint.Align.RIGHT);
         }
+        private void drawStaffKeyboardPair(Canvas c,float mid,int target) {
+            float left=38,right=logicalWidth-38;
+            float staffCenter=(left+mid)/2;
+            float keyboardCenter=(mid+right)/2;
+            text(c,"על החמשה (מפתח סול)",staffCenter,278,15,
+                0xff554285,true,Paint.Align.CENTER);
+            text(c,"על הפסנתר",keyboardCenter,278,15,
+                0xff554285,true,Paint.Align.CENTER);
+            drawSingleTeachingNote(c,staffCenter,target);
+            drawKeyboard(c,keyboardCenter,target);
+            text(c,"↔",mid,349,36,0xff8b6cdd,true,Paint.Align.CENTER);
+            text(c,"אותו צליל",mid,371,13,0xff77679a,true,Paint.Align.CENTER);
+            text(c,target==60?"דו אמצעי: על קו העזר שמתחת לחמשה":
+                "סול: על הקו השני מלמטה",
+                staffCenter,392,14,0xff6e6392,true,Paint.Align.CENTER);
+        }
+        private void drawSingleTeachingNote(Canvas c,float cx,int midi) {
+            float top=294,gap=15,bottom=top+4*gap;
+            float left=cx-132,right=cx+132;
+            for(int i=0;i<5;i++)
+                line(c,left,top+i*gap,right,top+i*gap,0xffaaa6bc,1.8f);
+            // Treble clef, five staff lines: E4 G4 B4 D5 F5 (bottom to top).
+            text(c,"𝄞",left+24,bottom-8,52,0xff685997,false,Paint.Align.CENTER);
+            float noteX=cx+28;
+            float noteY=StaffNoteLayout.yForMidi(midi,bottom,gap);
+            if(StaffNoteLayout.needsLedgerLine(midi))
+                line(c,noteX-27,noteY,noteX+27,noteY,0xff686082,2.2f);
+            int clr=color(midi);
+            p.reset();p.setAntiAlias(true);p.setColor(clr);p.setStyle(Paint.Style.FILL);
+            c.save();c.rotate(-18,noteX,noteY);
+            c.drawOval(new RectF(noteX-20,noteY-12,noteX+20,noteY+12),p);
+            c.restore();
+            line(c,noteX+16,noteY-3,noteX+16,noteY-59,clr,3.5f);
+            text(c,name(midi),noteX+69,noteY+7,18,clr,true,Paint.Align.LEFT);
+        }
         private void drawKeyboard(Canvas c,float mid,int target) {
-            float keyW=74,top=263,height=104,first=mid-keyW*3.5f;
+            float keyW=Math.min(58f,(logicalWidth/2f-92)/7f);
+            float top=291,height=91,first=mid-keyW*3.5f;
             String[] labels={"דו","רה","מי","פה","סול","לה","סי"};
             int selected=target==60?0:4;
             for(int i=0;i<7;i++){
-                float l=first+i*keyW,r=l+keyW-3;
-                round(c,l,top,r,top+height,5,i==selected?0xffa8e8d4:0xfff8f8fd);
-                p.reset();p.setAntiAlias(true);p.setColor(i==selected?0xff1ba77e:0xffbcb8cd);
-                p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(i==selected?3.5f:1.3f);
+                float l=first+i*keyW,r=l+keyW-2;
+                int keyColor=i==selected?0xffe7d3f8:0xfff8f8fd;
+                round(c,l,top,r,top+height,5,keyColor);
+                p.reset();p.setAntiAlias(true);
+                p.setColor(i==selected?color(target):0xffc3bfd1);
+                p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(i==selected?3.5f:1.4f);
                 c.drawRoundRect(new RectF(l,top,r,top+height),5,5,p);
-                text(c,labels[i],l+keyW/2,top+84,13,
-                    i==selected?0xff126b50:0xff736b8e,true,Paint.Align.CENTER);
+                text(c,labels[i],l+keyW/2,top+78,12,
+                    i==selected?0xff604093:0xff736b8e,true,Paint.Align.CENTER);
             }
             for(int i:new int[]{0,1,3,4,5}) {
-                float cx=first+(i+1)*keyW-2;
-                round(c,cx-15,top,cx+15,top+55,4,0xff293244);
+                float bx=first+(i+1)*keyW-2;
+                round(c,bx-13,top,bx+13,top+49,4,0xff283345);
             }
         }
         private void drawLearningControls(Canvas c) {
@@ -464,11 +494,7 @@ public final class MainActivity extends Activity {
                 if(beat<0)nx=lineX+STARTS[i]*pxPerBeat;
                 if(nx<x+63 || nx>r-39)continue;
                 int midi=MELODY[i],m=marks[i];
-                float ny=bottom+((64-midi)/2f)*sep;
-                // Absolute note positions (diatonic half-space steps).
-                switch(midi){case 60:ny=bottom+2*sep/2f;break;case 62:ny=bottom+sep/2f;break;
-                    case 64:ny=bottom;break;case 65:ny=bottom-sep/2f;break;
-                    case 67:ny=bottom-sep;break;case 69:ny=bottom-1.5f*sep;break;}
+                float ny=StaffNoteLayout.yForMidi(midi,bottom,sep);
                 if(i==current && beat>=0 && m!=3){
                     round(c,nx-34,193,nx+34,356,14,0xfff0e9ff);
                 }
