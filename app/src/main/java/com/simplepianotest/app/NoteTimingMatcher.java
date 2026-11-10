@@ -24,7 +24,7 @@ final class NoteTimingMatcher {
         int best = -1;
         double bestScore = Double.POSITIVE_INFINITY;
         for(int i=0;i<melody.length;i++) {
-            if(marks[i]==1)continue;
+            if(marks[i]==1 || marks[i]==3)continue; // 3: melody supplied by app, never score it
             double difference=Math.abs(detectedMidi - melody[i]);
             // The beginner mode accepts the same named note one octave higher.
             // This helps children who have a shorter keyboard or start on C5.
