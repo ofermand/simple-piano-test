@@ -448,8 +448,10 @@ public final class MainActivity extends Activity {
             button(c,flexibleRect,flexibleTiming?"✓ מצב גמיש":"🎯 מצב מדויק",
                     flexibleTiming?0xffe0f8ed:0xffeeeafa,
                     flexibleTiming?0xff188c69:0xff6549b4);
-            String n=beat<0?"מוכנים?":name(MELODY[current]);
-            text(c,"התו עכשיו: " + n,x+23,186,16,0xff704dd0,true,Paint.Align.LEFT);
+            String n=beat<0?"מוכנים?":
+                SongData.isChildNote(MELODY[current])?"התור שלך: "+name(MELODY[current]):
+                "הלהקה מנגנת";
+            text(c,n,x+23,186,16,0xff704dd0,true,Paint.Align.LEFT);
             float top=218,sep=21,bottom=top+4*sep;
             for(int i=0;i<5;i++)line(c,x+26,top+i*sep,r-25,top+i*sep,0xffb2b0c0,1.6f);
             float lineX=Math.min(logicalWidth*.30f,330),pxPerBeat=100;
@@ -467,17 +469,21 @@ public final class MainActivity extends Activity {
                 switch(midi){case 60:ny=bottom+2*sep/2f;break;case 62:ny=bottom+sep/2f;break;
                     case 64:ny=bottom;break;case 65:ny=bottom-sep/2f;break;
                     case 67:ny=bottom-sep;break;case 69:ny=bottom-1.5f*sep;break;}
-                if(i==current && beat>=0){round(c,nx-34,193,nx+34,356,14,0xfff0e9ff);}
+                if(i==current && beat>=0 && m!=3){
+                    round(c,nx-34,193,nx+34,356,14,0xfff0e9ff);
+                }
                 if(midi==60)line(c,nx-23,ny,nx+24,ny,0xff938a9e,2);
-                int clr=m==1?0xff24b28b:m==2?0xffe96c7d:color(midi);
+                int clr=m==3?0xffa5a7b7:m==1?0xff24b28b:m==2?0xffe96c7d:color(midi);
                 p.reset();p.setAntiAlias(true);p.setColor(clr);p.setStyle(LENGTHS[i]==2&&m==0?Paint.Style.STROKE:Paint.Style.FILL);p.setStrokeWidth(3.2f);
                 c.save();c.rotate(-18,nx,ny);c.drawOval(new RectF(nx-17,ny-11,nx+17,ny+11),p);c.restore();
                 line(c,nx+14,ny-2,nx+14,ny-52,clr,3);
                 if(m==1){circle(c,nx+27,ny-32,13,0xff24b28b);text(c,"✓",nx+27,ny-27,17,Color.WHITE,true,Paint.Align.CENTER);}
                 if(m==2){circle(c,nx+27,ny-32,13,0xffe96c7d);text(c,"×",nx+27,ny-26,19,Color.WHITE,true,Paint.Align.CENTER);}
-                text(c,name(midi),nx,368,15,m==1?0xff168e6f:m==2?0xffd55a6c:0xff6a588d,true,Paint.Align.CENTER);
+                text(c,name(midi),nx,368,15,m==3?0xffaaa6b7:m==1?0xff168e6f:
+                    m==2?0xffd55a6c:0xff6a588d,true,Paint.Align.CENTER);
             }
-            text(c,"🟣 התו הנוכחי     ● ירוק = הצלחה     ● אדום = פספוס",(x+r)/2,384,12,0xff8b8098,false,Paint.Align.CENTER);
+            text(c,"צבעוני = אתה מנגן     אפור = הלהקה משלימה     ירוק = הצלחה",
+                (x+r)/2,384,12,0xff8b8098,false,Paint.Align.CENTER);
             if(diagnosticsMode)drawMicDiagnostic(c,x,r);
             String detectedLabel=lastPitch<0 ||
                     SystemClock.elapsedRealtime()-lastPitchAt>650
@@ -517,8 +523,10 @@ public final class MainActivity extends Activity {
         private void drawResult(Canvas c){
             text(c,"🏆  ⭐  🎉",logicalWidth/2,215,56,0xffffdb77,true,Paint.Align.CENTER);
             text(c,"כל הכבוד! סיימת את השיר!",logicalWidth/2,273,34,Color.WHITE,true,Paint.Align.CENTER);
-            text(c,"ניגנת נכון "+hits()+" מתוך 14 תווים",logicalWidth/2,316,24,0xffc0f3de,true,Paint.Align.CENTER);
-            text(c,"אפשר לנגן שוב ולשפר את התוצאה",logicalWidth/2,364,18,0xffcce1ee,false,Paint.Align.CENTER);
+            text(c,"ניגנת נכון "+hits()+" מתוך "+SongData.REQUIRED_NOTES+
+                " התווים שלך",logicalWidth/2,316,24,0xffc0f3de,true,Paint.Align.CENTER);
+            text(c,"הלהקה השלימה את שאר המלודיה. אפשר לנגן שוב!",logicalWidth/2,364,18,
+                0xffcce1ee,false,Paint.Align.CENTER);
             text(c,"קלט יציב: "+stableWindows+"/"+pitchWindows+
                 "    צליל שונה: "+wrongPitchWindows+
                 "    תזמון: "+timingWindows,
@@ -557,8 +565,24 @@ public final class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent event){
             if(event.getAction()!=MotionEvent.ACTION_UP)return true;
             float x=event.getX()/scale,y=event.getY()/scale;
+            if(phase==Phase.WELCOME || phase==Phase.TEACH_C ||
+                    phase==Phase.TEACH_G || phase==Phase.PRACTICE){
+                if(learnPrimaryRect.contains(x,y))advanceLesson();
+                else if(learnBackRect.contains(x,y) && phase!=Phase.WELCOME){
+                    if(phase==Phase.TEACH_C)phase=Phase.WELCOME;
+                    else if(phase==Phase.TEACH_G)phase=Phase.TEACH_C;
+                    else if(phase==Phase.PRACTICE)phase=Phase.TEACH_G;
+                    lessonRecognized=false;
+                    status="מוכנים? נלמד עוד צעד קטן";
+                }
+                invalidate();
+                return true;
+            }
             if(playRect.contains(x,y))playPause();
-            else if(resetRect.contains(x,y))reset();
+            else if(resetRect.contains(x,y)){
+                if(phase==Phase.RESULTS)phase=Phase.SONG;
+                reset();
+            }
             else if(slowRect.contains(x,y))setBpm(72);
             else if(normalRect.contains(x,y))setBpm(96);
             else if(diagnosticRect.contains(x,y)){
