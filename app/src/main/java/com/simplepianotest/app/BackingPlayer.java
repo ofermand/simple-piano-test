@@ -15,8 +15,8 @@ import java.util.Random;
  */
 final class BackingPlayer {
     private static final int SR = 22050;
-    private static final int BEATS = 16;
-    private static final int COUNT_IN = 4;
+    private static final int BEATS = SongData.TOTAL_BEATS;
+    private static final int COUNT_IN = SongData.COUNT_IN;
     private final int bpm;
     private final File waveFile;
     private MediaPlayer mediaPlayer;
@@ -34,20 +34,31 @@ final class BackingPlayer {
         float[] mix=new float[frames];
         double beatSec=60.0/bpm;
         int[][] chords={{48,52,55},{41,45,48},{41,45,48},{48,52,55}};
-        for(int bar=0;bar<4;bar++) {
+        for(int bar=0;bar<BEATS/4;bar++) {
             double t=(COUNT_IN+bar*4)*beatSec;
-            for(int note:chords[bar]) addPad(mix,t,note,3.7*beatSec,0.036f);
+            for(int note:chords[bar%chords.length]) addPad(mix,t,note,3.7*beatSec,0.036f);
         }
         int[] bass={36,36,43,43,45,45,43,43,41,41,40,40,43,43,36,36};
         Random random=new Random(10);
         for(int b=0;b<BEATS;b++) {
             double t=(COUNT_IN+b)*beatSec;
-            if(b%2==0)addBass(mix,t,bass[b],.50*beatSec);
+            if(b%2==0)addBass(mix,t,bass[b%bass.length],.50*beatSec);
             if(b%4==0)addKick(mix,t);
             if(b%4==2)addSnare(mix,t,random);
             addHat(mix,t,random);
         }
         for(int b=0;b<COUNT_IN;b++)addCountIn(mix,b*beatSec,b==0);
+        // Level 1: fill the melody only for notes the child has NOT learned.
+        // Never synthesize the child's C4/G4 notes: microphone success must
+        // reflect the real instrument, rather than the phone's own speaker.
+        for(int i=0;i<SongData.MELODY.length;i++) {
+            int midi=SongData.MELODY[i];
+            if(!SongData.isChildNote(midi)) {
+                double start=(COUNT_IN+SongData.STARTS[i])*beatSec;
+                double duration=SongData.LENGTHS[i]*beatSec;
+                addMelodyNote(mix,start,midi,duration);
+            }
+        }
 
         // Write little-endian 16-bit mono WAV. Generated only in app's private cache.
         int bytes=frames*2;
@@ -132,6 +143,20 @@ final class BackingPlayer {
         for(int i=0;i<len;i++) { double t=i/(double)SR;double n=r.nextDouble()*2-1;
             mix[first+i]+=(float)(.023*Math.exp(-t*65)*(n-prev));prev=n; }
     }
+    private static void addMelodyNote(float[] mix,double start,int midi,double duration) {
+        int first=(int)(start*SR);
+        int len=Math.min(mix.length-first,(int)(duration*SR));
+        double f=freq(midi);
+        for(int i=0;i<len;i++){
+            double t=i/(double)SR;
+            double attack=Math.min(1.0,t/.018);
+            double release=Math.min(1.0,(duration-t)/.11);
+            double envelope=Math.max(0,attack*release)*Math.exp(-t*.45);
+            double tone=Math.sin(2*Math.PI*f*t)
+                +.23*Math.sin(2*Math.PI*2*f*t)+.08*Math.sin(2*Math.PI*3*f*t);
+            mix[first+i]+=(float)(.13*envelope*tone);
+        }
+    }
     private static void addCountIn(float[] mix, double start, boolean accent) {
         int first=(int)(start*SR); int len=Math.min((int)(SR*.08),mix.length-first);
         for(int i=0;i<len;i++) {double t=i/(double)SR;
@@ -157,7 +182,7 @@ final class BackingPlayer {
     }
     double getBeatPosition() {
         if(mediaPlayer==null)return 0;
-        return Math.min(16.0,mediaPlayer.getCurrentPosition()/(double)1000*bpm/60.0-COUNT_IN);
+        return Math.min(BEATS,mediaPlayer.getCurrentPosition()/(double)1000*bpm/60.0-COUNT_IN);
     }
     void close() {
         if(mediaPlayer!=null){mediaPlayer.release();mediaPlayer=null;}
