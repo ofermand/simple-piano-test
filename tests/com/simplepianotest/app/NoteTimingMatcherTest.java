@@ -48,6 +48,14 @@ public final class NoteTimingMatcherTest {
             SongData.MELODY,SongData.STARTS,SongData.LENGTHS,
             fullMarks,60,0.25,72,true);
         check("child C still counts",0,playedChild);
-        System.out.println("Simple Piano: timing, full-song and ownership tests passed");
+        // C4 sits on the ledger line below the five-line treble staff;
+        // G4 sits on the second line from the bottom.
+        check("C4 ledger position",120,(int)StaffNoteLayout.yForMidi(60,100,20));
+        check("G4 second-line position",80,(int)StaffNoteLayout.yForMidi(67,100,20));
+        check("E4 bottom line",100,(int)StaffNoteLayout.yForMidi(64,100,20));
+        if(!StaffNoteLayout.needsLedgerLine(60) ||
+                StaffNoteLayout.needsLedgerLine(67))
+            throw new AssertionError("Wrong staff ledger line assignment");
+        System.out.println("Simple Piano: timing, song, ownership and staff-reading tests passed");
     }
 }
