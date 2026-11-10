@@ -314,6 +314,7 @@ public final class MainActivity extends Activity {
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF(),flexibleRect=new RectF();
+        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF();
         private float scale=1,logicalWidth=1080;
         GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         @Override protected void onDraw(Canvas canvas){
@@ -326,8 +327,14 @@ public final class MainActivity extends Activity {
             gradient.setShader(new LinearGradient(0,10,logicalWidth,493,0xff102d4b,0xff236463,Shader.TileMode.CLAMP));
             canvas.drawRoundRect(new RectF(15,13,logicalWidth-15,489),23,23,gradient);
             drawHeader(canvas);
-            if(finished)drawResult(canvas);else drawStaff(canvas);
-            drawControls(canvas);
+            if(phase==Phase.WELCOME || phase==Phase.TEACH_C ||
+                    phase==Phase.TEACH_G || phase==Phase.PRACTICE){
+                drawLearning(canvas);
+                drawLearningControls(canvas);
+            }else {
+                if(phase==Phase.RESULTS)drawResult(canvas);else drawStaff(canvas);
+                drawControls(canvas);
+            }
             canvas.restore();
         }
         private void drawHeader(Canvas c){
@@ -337,8 +344,100 @@ public final class MainActivity extends Activity {
             text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
             round(c,x,y,x+w,y+10,5,0x55ffffff);
-            if(beat>0)round(c,x,y,x+w*(float)Math.min(1,beat/16),y+10,5,0xff69e4c6);
-            text(c,beat<0 && playing?"מתחילים בעוד " +(int)Math.ceil(-beat)+"...":(finished?"הושלם":""+Math.round(Math.max(0,beat)/16*100)+"%"),logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
+            if(phase==Phase.SONG || phase==Phase.RESULTS) {
+                if(beat>0)round(c,x,y,x+w*(float)Math.min(1,beat/TOTAL_BEATS),y+10,5,0xff69e4c6);
+                text(c,beat<0 && playing?"מתחילים בעוד "+(int)Math.ceil(-beat)+"...":
+                    (phase==Phase.RESULTS?"הושלם":""+Math.round(Math.max(0,beat)/TOTAL_BEATS*100)+"%"),
+                    logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
+            }else{
+                float progress=phase==Phase.WELCOME?0:phase==Phase.TEACH_C?.20f:
+                    phase==Phase.TEACH_G?.48f:.77f;
+                if(progress>0)round(c,x,y,x+w*progress,y+10,5,0xff69e4c6);
+                text(c,phase==Phase.WELCOME?"בחרנו שיר":
+                    phase==Phase.TEACH_C?"שלב 1: דו":
+                    phase==Phase.TEACH_G?"שלב 2: סול":"שלב 3: מתרגלים",
+                    logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
+            }
+        }
+        private void drawLearning(Canvas c) {
+            float x=38,r=logicalWidth-38,mid=(x+r)/2;
+            round(c,x,160,r,398,20,0xfffcfbff);
+            if(phase==Phase.WELCOME) {
+                text(c,"⭐  🎵  ⭐",mid,226,46,0xffffbb49,true,Paint.Align.CENTER);
+                text(c,"בוא ננגן את כוכב קטן!",mid,272,35,0xff463982,true,Paint.Align.CENTER);
+                text(c,"לומדים רק שני תווים, ומנגנים שיר שלם עם הלהקה",mid,318,21,
+                    0xff746a9e,false,Paint.Align.CENTER);
+                round(c,mid-196,340,mid-18,378,17,0xffe9f8ee);
+                round(c,mid+18,340,mid+196,378,17,0xffe9f3fd);
+                text(c,"🎹 דו + סול",mid-107,366,17,0xff278963,true,Paint.Align.CENTER);
+                text(c,"🎶 שיר שלם",mid+107,366,17,0xff4678bd,true,Paint.Align.CENTER);
+            }else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G) {
+                int target=phase==Phase.TEACH_C?60:67;
+                text(c,"היום פוגשים את "+name(target)+"!",mid,215,29,0xff554285,true,Paint.Align.CENTER);
+                text(c,phase==Phase.TEACH_C?
+                    "מצא זוג קלידים שחורים. דו הוא הקליד הלבן שמשמאלם.":
+                    "סול נמצא ארבעה קלידים לבנים מימין לדו.",
+                    mid,244,16,0xff6e6595,false,Paint.Align.CENTER);
+                drawKeyboard(c,mid,target);
+                text(c,lessonRecognized?"✓ כל הכבוד! זיהיתי את הצליל שלך.":
+                    "נגן את הקליד המואר בפסנתר שלך",
+                    mid,388,18,lessonRecognized?0xff179b73:0xff7665ab,
+                    true,Paint.Align.CENTER);
+            }else if(phase==Phase.PRACTICE){
+                text(c,"עכשיו מנגנים ארבעה תווים!",mid,221,29,0xff554285,true,Paint.Align.CENTER);
+                text(c,"בלי קצב ובלי לחץ. נגן לפי הסדר.",mid,257,18,0xff786e9a,false,Paint.Align.CENTER);
+                float start=mid-267,spacing=178;
+                for(int i=0;i<PRACTICE.length;i++){
+                    float center=start+i*spacing;
+                    int bg=i<practiceStep?0xffe0f8ed:
+                        i==practiceStep?0xffe5d9fc:0xfff0eef7;
+                    round(c,center-62,279,center+62,353,17,bg);
+                    text(c,i<practiceStep?"✓":name(PRACTICE[i]),
+                        center,328,27,i<practiceStep?0xff218e6e:
+                        i==practiceStep?0xff7252c5:0xff968bac,true,Paint.Align.CENTER);
+                }
+                text(c,practiceStep>=PRACTICE.length?"מוכנים! עכשיו תנגן את כל השיר":
+                    "עכשיו נגן: "+name(PRACTICE[practiceStep]),mid,389,19,
+                    practiceStep>=PRACTICE.length?0xff1e956f:0xff7252c5,
+                    true,Paint.Align.CENTER);
+            }
+            text(c,status,logicalWidth-43,435,18,0xffffffff,true,Paint.Align.RIGHT);
+            String detected=lastPitch<0 || SystemClock.elapsedRealtime()-lastPitchAt>650?
+                "—":name((int)Math.round(lastPitch));
+            text(c,"🎙 המיקרופון שומע: "+detected+"     "+(micOn?"מחובר":"לא פעיל"),
+                logicalWidth-43,470,15,micOn?0xffb6efde:0xffffaeb6,true,Paint.Align.RIGHT);
+        }
+        private void drawKeyboard(Canvas c,float mid,int target) {
+            float keyW=74,top=263,height=104,first=mid-keyW*3.5f;
+            String[] labels={"דו","רה","מי","פה","סול","לה","סי"};
+            int selected=target==60?0:4;
+            for(int i=0;i<7;i++){
+                float l=first+i*keyW,r=l+keyW-3;
+                round(c,l,top,r,top+height,5,i==selected?0xffa8e8d4:0xfff8f8fd);
+                p.reset();p.setAntiAlias(true);p.setColor(i==selected?0xff1ba77e:0xffbcb8cd);
+                p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(i==selected?3.5f:1.3f);
+                c.drawRoundRect(new RectF(l,top,r,top+height),5,5,p);
+                text(c,labels[i],l+keyW/2,top+84,13,
+                    i==selected?0xff126b50:0xff736b8e,true,Paint.Align.CENTER);
+            }
+            for(int i:new int[]{0,1,3,4,5}) {
+                float cx=first+(i+1)*keyW-2;
+                round(c,cx-15,top,cx+15,top+55,4,0xff293244);
+            }
+        }
+        private void drawLearningControls(Canvas c) {
+            round(c,15,502,logicalWidth-15,585,17,0xffffffff);
+            float right=logicalWidth-40;
+            learnPrimaryRect.set(right-283,515,right,568);
+            String title=phase==Phase.WELCOME?"🎹 לומדים דו":
+                phase==Phase.TEACH_C?"ממשיכים לסול":
+                phase==Phase.TEACH_G?"מתרגלים יחד":"▶ מנגנים שיר שלם";
+            button(c,learnPrimaryRect,title,0xff7555e8,Color.WHITE);
+            learnBackRect.set(36,520,198,565);
+            if(phase!=Phase.WELCOME)
+                button(c,learnBackRect,"↩ חזרה",0xffeeeaf8,0xff6954ad);
+            else
+                text(c,"זמן לימוד קצר, והמון מוזיקה",49,550,17,0xff77699f,true,Paint.Align.LEFT);
         }
         private void drawStaff(Canvas c){
             float x=38,r=logicalWidth-38;
