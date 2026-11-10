@@ -35,6 +35,7 @@ jobs:
           javac -d /tmp/simplepiano-timing \
             app/src/main/java/com/simplepianotest/app/NoteTimingMatcher.java \
             app/src/main/java/com/simplepianotest/app/SongData.java \
+            app/src/main/java/com/simplepianotest/app/StaffNoteLayout.java \
             tests/com/simplepianotest/app/NoteTimingMatcherTest.java
           java -cp /tmp/simplepiano-timing com.simplepianotest.app.NoteTimingMatcherTest
       - name: Compile debug APK
