@@ -34,6 +34,20 @@ public final class NoteTimingMatcherTest {
             throw new AssertionError("Flexible note was marked missed too soon");
         if(!NoteTimingMatcher.shouldMiss(0,1,1.65,true))
             throw new AssertionError("Flexible note was not marked missed");
-        System.out.println("NoteTimingMatcher: all 13 timing checks passed");
+        if(SongData.MELODY.length!=42 || SongData.TOTAL_BEATS!=48 ||
+                SongData.REQUIRED_NOTES!=16)
+            throw new AssertionError("Full-song melody or child ownership mismatch");
+        int[] fullMarks=new int[SongData.MELODY.length];
+        for(int i=0;i<fullMarks.length;i++)
+            fullMarks[i]=SongData.isChildNote(SongData.MELODY[i])?0:3;
+        int autoNote=NoteTimingMatcher.findMatch(
+            SongData.MELODY,SongData.STARTS,SongData.LENGTHS,
+            fullMarks,69,4.3,72,true);
+        check("auto-played A must not earn success",-1,autoNote);
+        int playedChild=NoteTimingMatcher.findMatch(
+            SongData.MELODY,SongData.STARTS,SongData.LENGTHS,
+            fullMarks,60,0.25,72,true);
+        check("child C still counts",0,playedChild);
+        System.out.println("Simple Piano: timing, full-song and ownership tests passed");
     }
 }
