@@ -215,6 +215,15 @@ public final class MainActivity extends Activity {
             }
         }
     }
+    private void returnToPractice(){
+        if(playing && player!=null)player.pause();
+        playing=false;
+        phase=Phase.PRACTICE;
+        practiceStep=0;
+        lastPracticeHitAt=0;
+        status="בוא נתרגל שוב: קרא דו וסול על החמשה";
+        gameView.invalidate();
+    }
     private void advanceLesson(){
         if(phase==Phase.WELCOME){
             phase=Phase.TEACH_C;
@@ -314,7 +323,7 @@ public final class MainActivity extends Activity {
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF(),flexibleRect=new RectF();
-        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF();
+        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF(),practiceReturnRect=new RectF();
         private float scale=1,logicalWidth=1080;
         GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         @Override protected void onDraw(Canvas canvas){
@@ -478,6 +487,8 @@ public final class MainActivity extends Activity {
             button(c,flexibleRect,flexibleTiming?"✓ מצב גמיש":"🎯 מצב מדויק",
                     flexibleTiming?0xffe0f8ed:0xffeeeafa,
                     flexibleTiming?0xff188c69:0xff6549b4);
+            practiceReturnRect.set(center+113,164,center+270,200);
+            button(c,practiceReturnRect,"↩ לתרגול",0xffe8f4ff,0xff345ba5);
             String n=beat<0?"מוכנים?":
                 SongData.isChildNote(MELODY[current])?"התור שלך: "+name(MELODY[current]):
                 "הלהקה מנגנת";
@@ -557,6 +568,8 @@ public final class MainActivity extends Activity {
                 "    צליל שונה: "+wrongPitchWindows+
                 "    תזמון: "+timingWindows,
                 logicalWidth/2,419,16,0xffffe4aa,false,Paint.Align.CENTER);
+            practiceReturnRect.set(logicalWidth/2-102,443,logicalWidth/2+102,482);
+            button(c,practiceReturnRect,"↩ לתרגול דו וסול",0xffe8f4ff,0xff345ba5);
         }
         private int misses(){int n=0;for(int v:marks)if(v==2)n++;return n;}
         private void drawControls(Canvas c){
@@ -604,7 +617,8 @@ public final class MainActivity extends Activity {
                 invalidate();
                 return true;
             }
-            if(playRect.contains(x,y))playPause();
+            if(practiceReturnRect.contains(x,y))returnToPractice();
+            else if(playRect.contains(x,y))playPause();
             else if(resetRect.contains(x,y)){
                 if(phase==Phase.RESULTS)phase=Phase.SONG;
                 reset();
