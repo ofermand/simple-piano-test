@@ -4,12 +4,16 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:allowBackup="false"
-        android:label="Simple Piano TEST"
+        android:label="Simple Piano GOLDEN"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".GoldenActivity"
             android:exported="true"
             android:screenOrientation="landscape">
             <intent-filter>
