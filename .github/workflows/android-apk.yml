@@ -38,6 +38,14 @@ jobs:
             app/src/main/java/com/simplepianotest/app/StaffNoteLayout.java \
             tests/com/simplepianotest/app/NoteTimingMatcherTest.java
           java -cp /tmp/simplepiano-timing com.simplepianotest.app.NoteTimingMatcherTest
+      - name: Verify Golden MIDI and compact music keyboard
+        run: |
+          mkdir -p /tmp/simplepiano-golden
+          javac -d /tmp/simplepiano-golden \
+            app/src/main/java/com/simplepianotest/app/GoldenMidi.java \
+            app/src/main/java/com/simplepianotest/app/GoldenLesson.java \
+            tests/com/simplepianotest/app/GoldenMidiTest.java
+          java -cp /tmp/simplepiano-golden com.simplepianotest.app.GoldenMidiTest
       - name: Compile debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Publish installable APK
