@@ -10,8 +10,8 @@ android {
         applicationId 'com.simplepianotest.app'
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '0.7-test'
+        versionCode 8
+        versionName '0.8-golden-preview'
     }
 
     compileOptions {
