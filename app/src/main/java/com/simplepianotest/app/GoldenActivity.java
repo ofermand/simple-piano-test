@@ -53,6 +53,7 @@ public final class GoldenActivity extends Activity {
     private Uri midiUri,backingUri;
     private BackingPlayer demoBacking;
     private MediaPlayer importedBacking;
+    private GoldenGuidePlayer guide;
     private long songPositionMs=0,lastHitAt=0,lastPracticeHitAt=0;
     private int lastHitPitch=-1, lastPlayedIndex=-1;
     private double currentPitch=-1,lastConfidence=0,rms=0;
@@ -242,11 +243,14 @@ public final class GoldenActivity extends Activity {
                     .setUsage(AudioAttributes.USAGE_MEDIA).build());
                 importedBacking.setDataSource(this,backingUri);
                 importedBacking.prepare();
+                guide=new GoldenGuidePlayer(this,melody,lessonPitches);
+                guide.setVolume(volumeLevel==0?0:volumeLevel==1?.34f:.7f);
                 importedBacking.setVolume(volumeLevel==0?0:volumeLevel==1?.34f:.7f,
                     volumeLevel==0?0:volumeLevel==1?.34f:.7f);
                 importedBacking.setOnCompletionListener(player->{
                     if(stage==Stage.SONG)endSong();
                 });
+                guide.play();
                 importedBacking.start();
             }
             playing=true;
@@ -264,16 +268,21 @@ public final class GoldenActivity extends Activity {
             try{importedBacking.release();}catch(Exception ignored){}
             importedBacking=null;
         }
+        if(guide!=null){guide.close();guide=null;}
     }
     private void pausePlay(){
         if(stage!=Stage.SONG)return;
         if(playing){
             if(usingDemo && demoBacking!=null)demoBacking.pause();
             else if(importedBacking!=null)importedBacking.pause();
+            if(guide!=null)guide.pause();
             playing=false;
         }else {
             if(usingDemo && demoBacking!=null)demoBacking.play();
-            else if(importedBacking!=null)importedBacking.start();
+            else if(importedBacking!=null) {
+                if(guide!=null){guide.alignTo(importedBacking.getCurrentPosition());guide.play();}
+                importedBacking.start();
+            }
             playing=true;
         }
     }
@@ -295,6 +304,7 @@ public final class GoldenActivity extends Activity {
         float vol=volumeLevel==0?0:volumeLevel==1?.34f:.7f;
         if(demoBacking!=null)demoBacking.setVolume(vol);
         if(importedBacking!=null)importedBacking.setVolume(vol,vol);
+        if(guide!=null)guide.setVolume(vol);
     }
     private void pickFile(int code){
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -483,9 +493,12 @@ public final class GoldenActivity extends Activity {
                     0;
             round(c,42,124,width-42,132,4,0xff3b3c69);
             round(c,42,124,42+(width-84)*progress,132,4,PINK);
-            int target=nextRequiredNote();
+            boolean recent=wasRecentHit();
+            int target=recent && lastPlayedIndex<melody.size()?
+                GoldenLesson.normalized(melody.get(lastPlayedIndex).midi):
+                nextRequiredNote();
             staff(c,target,true,songPositionMs);
-            keyboard(c,target,wasRecentHit());
+            keyboard(c,target,recent);
             text(c,hits()+" / "+total(),width-47,492,23,YELLOW,true,Paint.Align.RIGHT);
             first.set(width-190,522,width-39,576);
             pill(c,first,playing?"Ⅱ":"▶",PINK,Color.WHITE);
@@ -570,7 +583,7 @@ public final class GoldenActivity extends Activity {
                 float x=left+i*keyWidth;
                 int semitone=white[i]%12;
                 boolean selected=requested>=0 && semitone==requested &&
-                    !GoldenLesson.sharp(target);
+                    white[i]<12 && !GoldenLesson.sharp(target);
                 int fill=selected?(success?0xff4defb7:0xff6ce3eb):0xfff6f5ff;
                 round(c,x+1,top,x+keyWidth-2,top+111,6,fill);
                 if(selected) {
