@@ -46,6 +46,25 @@ public final class GoldenMidiTest {
         ok(GoldenLesson.staffY(60,100,20)==120,"C4 ledger line incorrect");
         ok(GoldenLesson.staffY(67,100,20)==80,"G4 staff line incorrect");
         ok(GoldenLesson.sharp(66) && !GoldenLesson.sharp(67),"Black keyboard note mapping wrong");
-        System.out.println("Golden: MIDI import, level-one learning and staff keyboard passed");
+        GoldenProgression base=new GoldenProgression(notes);
+        ok(base.levelCount()==1,"Two-pitch practice should have just one level");
+        ok(base.totalOwned(notes,0)==4,"Beginner must own all notes in two-pitch fixture");
+        List<GoldenMidi.Note> advanced=java.util.Arrays.asList(
+            new GoldenMidi.Note(60,0,300),
+            new GoldenMidi.Note(67,500,800),
+            new GoldenMidi.Note(69,1000,1300),
+            new GoldenMidi.Note(62,1500,1800),
+            new GoldenMidi.Note(60,2000,2300),
+            new GoldenMidi.Note(67,2500,2800));
+        GoldenProgression campaign=new GoldenProgression(advanced);
+        ok(campaign.levelCount()==3,"Four pitch classes should create three song levels");
+        ok(campaign.ownedAt(0).length==2,"First level starts with two notes");
+        ok(campaign.ownedAt(1).length==3,"First upgrade adds exactly one note");
+        ok(campaign.ownedAt(2).length==4,"Last upgrade includes every melody note");
+        ok(!campaign.hasNext(2),"Full melody should finish the note-unlock path");
+        ok(campaign.totalOwned(advanced,0)==4,"Beginner ownership is too broad");
+        ok(campaign.totalOwned(advanced,2)==6,"Highest level must cover whole song");
+        ok(GoldenLesson.owns(74,campaign.ownedAt(2)),"All learned pitch classes count across octaves");
+        System.out.println("Golden: MIDI, progressively unlocked full-song parts and keyboard passed");
     }
 }
