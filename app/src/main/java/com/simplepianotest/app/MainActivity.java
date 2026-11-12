@@ -355,8 +355,8 @@ public final class MainActivity extends Activity {
         }
         if(phase==Phase.PRACTICE && practiceStep<practiceNotes.length) {
             int expected=practiceNotes[practiceStep];
+            long now=SystemClock.elapsedRealtime();
             if(isMatchingPracticeNote(midi,expected)) {
-                long now=SystemClock.elapsedRealtime();
                 if(now-lastPracticeHitAt<350)return;
                 practiceStep++;
                 lastPracticeHitAt=now;
