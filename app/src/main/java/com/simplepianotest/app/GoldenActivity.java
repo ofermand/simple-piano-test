@@ -37,23 +37,28 @@ import java.util.Locale;
  * public-domain Twinkle demo remains available to test the complete flow.
  */
 public final class GoldenActivity extends Activity {
-    private static final int PICK_MIDI=201, PICK_BACKING=202, MIC_PERMISSION=203;
-    private enum Stage { HOME, NOTE_ONE, NOTE_TWO, PRACTICE, SONG, RESULT }
+    private static final int PICK_MIDI=201, PICK_BACKING=202, MIC_PERMISSION=203, PICK_GUIDE=204;
+    private enum Stage { HOME, NOTE_ONE, NOTE_TWO, BONUS_NOTE, PRACTICE, SONG, RESULT }
     private Stage stage=Stage.HOME;
     private GoldenView view;
     private final Handler main=new Handler(Looper.getMainLooper());
     private PitchDetector mic;
     private boolean micReady=false,playing=false,usingDemo=false,learned=false;
-    private int noteStep=0, trackIndex=0, volumeLevel=1;
+    private int noteStep=0, trackIndex=0, volumeLevel=1, levelIndex=0;
+    private GoldenProgression progression;
+    private int[] ownedPitches={60,67};
+    private int[] practicePattern={60,67,60,67};
     private final int[] lessonPitches={60,67};
     private final int[] practiceMarks=new int[4];
     private final List<GoldenMidi.Note> melody=new ArrayList<>();
     private GoldenMidi.Song importedSong;
     private int[] marks=new int[0]; // 0 child-pending, 1 hit, 2 miss, 3 backing-only
-    private Uri midiUri,backingUri;
+    private Uri midiUri,backingUri,recordedGuideUri;
     private BackingPlayer demoBacking;
     private MediaPlayer importedBacking;
     private GoldenGuidePlayer guide;
+    private MediaPlayer recordedGuide;
+    private long lastGuideSyncMs=0;
     private long songPositionMs=0,lastHitAt=0,lastPracticeHitAt=0;
     private int lastHitPitch=-1, lastPlayedIndex=-1;
     private double currentPitch=-1,lastConfidence=0,rms=0;
@@ -120,13 +125,14 @@ public final class GoldenActivity extends Activity {
         double detected=69+12*Math.log(hz/440.0)/Math.log(2);
         currentPitch=detected;
         pitchAt=SystemClock.elapsedRealtime();
-        if(stage==Stage.NOTE_ONE || stage==Stage.NOTE_TWO) {
-            int target=lessonPitches[stage==Stage.NOTE_ONE?0:1];
+        if(stage==Stage.NOTE_ONE || stage==Stage.NOTE_TWO || stage==Stage.BONUS_NOTE) {
+            int target=stage==Stage.BONUS_NOTE?progression.newestPitch(levelIndex):
+                lessonPitches[stage==Stage.NOTE_ONE?0:1];
             if(GoldenLesson.sameNote(detected,target)){learned=true;notice="✓";}
             return;
         }
         if(stage==Stage.PRACTICE && noteStep<practiceMarks.length){
-            int target=lessonPitches[noteStep%2];
+            int target=practicePattern[noteStep];
             long now=SystemClock.elapsedRealtime();
             if(GoldenLesson.sameNote(detected,target) && now-lastPracticeHitAt>380){
                 practiceMarks[noteStep]=1;
