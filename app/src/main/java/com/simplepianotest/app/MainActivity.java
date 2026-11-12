@@ -494,7 +494,10 @@ public final class MainActivity extends Activity {
             float keyW=Math.min(58f,(logicalWidth/2f-92)/7f);
             float top=291,height=91,first=mid-keyW*3.5f;
             String[] labels={"דו","רה","מי","פה","סול","לה","סי"};
-            int selected=target==60?0:4;
+            int[] whiteMidi={60,62,64,65,67,69,71};
+            int selected=-1;
+            for(int i=0;i<whiteMidi.length;i++)
+                if(whiteMidi[i]==target){selected=i;break;}
             for(int i=0;i<7;i++){
                 float l=first+i*keyW,r=l+keyW-2;
                 int keyColor=i==selected?0xffe7d3f8:0xfff8f8fd;
