@@ -75,7 +75,23 @@ public final class GoldenActivity extends Activity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         view=new GoldenView();
         setContentView(view);
-        restoreFiles();
+        // Golden is ready to play only when its notes and music were packaged
+        // into the APK. No adult configuration screens in the child flow.
+        try {
+            if(GoldenPack.isInstalled(this)){
+                importedSong=GoldenPack.loadNotes(this);
+                midiUri=Uri.parse("asset:///golden_melody.mid");
+                backingUri=GoldenPack.extractInstrumental(this);
+                trackIndex=pickLeadTrack(importedSong);
+                chooseGolden();
+            }else{
+                stage=Stage.HOME;
+                notice="GOLDEN PACK MISSING";
+            }
+        }catch(Exception error){
+            stage=Stage.HOME;
+            notice="GOLDEN PACK ERROR";
+        }
         main.post(ticker);
         requestMic();
     }
@@ -164,6 +180,21 @@ public final class GoldenActivity extends Activity {
         notice="✓";
         view.invalidate();
     }
+    private static int pickLeadTrack(GoldenMidi.Song song) {
+        for(int i=0;i<song.tracks.size();i++){
+            String name=song.tracks.get(i).name.toLowerCase(Locale.US);
+            if(name.contains("rumi") || name.contains("vocal melody") ||
+                name.contains("lead vocal") || name.contains("main melody"))
+                return i;
+        }
+        for(int i=0;i<song.tracks.size();i++){
+            String name=song.tracks.get(i).name.toLowerCase(Locale.US);
+            if(name.contains("melody") || name.contains("voice"))
+                return i;
+        }
+        // Explicit first track fallback; not a claim of musical verification.
+        return 0;
+    }
     private String songKey(){
         return "golden_level_"+(midiUri==null?"none":midiUri.toString()).hashCode()+"_track_"+trackIndex;
     }
@@ -184,8 +215,14 @@ public final class GoldenActivity extends Activity {
             int previous=ownedPitches[ownedPitches.length-2];
             practicePattern=new int[]{newest,previous,newest,previous};
         }
-        String uri=getPreferences(MODE_PRIVATE).getString(stemKey(),null);
-        recordedGuideUri=uri==null?null:Uri.parse(uri);
+        try {
+            recordedGuideUri=GoldenPack.isInstalled(this)?
+                GoldenPack.extractGuide(this,levelIndex):null;
+        }catch(Exception missing){recordedGuideUri=null;}
+        if(recordedGuideUri==null){
+            String uri=getPreferences(MODE_PRIVATE).getString(stemKey(),null);
+            recordedGuideUri=uri==null?null:Uri.parse(uri);
+        }
     }
     private void chooseGolden(){
         if(importedSong==null || backingUri==null){
