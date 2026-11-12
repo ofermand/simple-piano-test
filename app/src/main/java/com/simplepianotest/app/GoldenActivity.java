@@ -257,65 +257,86 @@ public final class GoldenActivity extends Activity {
         }
         learned=false;notice="";
     }
+    private MediaPlayer prepareAudio(Uri uri)throws Exception{
+        MediaPlayer mp=new MediaPlayer();
+        try{
+            mp.setAudioAttributes(new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_MEDIA).build());
+            mp.setDataSource(this,uri);
+            mp.prepare();
+            return mp;
+        }catch(Exception ex){mp.release();throw ex;}
+    }
+    private float mixVolume(){return volumeLevel==0?0:volumeLevel==1?.35f:.68f;}
     private void startPlayback(){
         stopPlayback();
         resetMarks();
         songPositionMs=0;
         lastHitAt=0;lastHitPitch=-1;lastPlayedIndex=-1;
         playbackError="";
-        try {
-            if(usingDemo) {
-                demoBacking=new BackingPlayer(this,72);
-                demoBacking.setVolume(volumeLevel==0?0:volumeLevel==1?.33f:.65f);
-                demoBacking.play();
-            }else{
-                importedBacking=new MediaPlayer();
-                importedBacking.setAudioAttributes(new AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA).build());
-                importedBacking.setDataSource(this,backingUri);
-                importedBacking.prepare();
-                guide=new GoldenGuidePlayer(this,melody,lessonPitches);
-                guide.setVolume(volumeLevel==0?0:volumeLevel==1?.34f:.7f);
-                importedBacking.setVolume(volumeLevel==0?0:volumeLevel==1?.34f:.7f,
-                    volumeLevel==0?0:volumeLevel==1?.34f:.7f);
-                importedBacking.setOnCompletionListener(player->{
-                    if(stage==Stage.SONG)endSong();
-                });
-                guide.play();
-                importedBacking.start();
+        try{
+            if(backingUri==null)throw new IllegalStateException("No instrumental");
+            importedBacking=prepareAudio(backingUri);
+            importedBacking.setVolume(mixVolume(),mixVolume());
+            importedBacking.setOnCompletionListener(player->{
+                if(stage==Stage.SONG)endSong();
+            });
+            if(recordedGuideUri!=null){
+                try {
+                    recordedGuide=prepareAudio(recordedGuideUri);
+                    recordedGuide.setVolume(mixVolume(),mixVolume());
+                    recordedGuide.seekTo(0);
+                }catch(Exception invalidStem){
+                    recordedGuide=null;
+                    notice="STEM?";
+                }
             }
+            if(recordedGuide==null){
+                guide=new GoldenGuidePlayer(this,melody,ownedPitches);
+                guide.setVolume(mixVolume());
+            }
+            if(recordedGuide!=null)recordedGuide.start();
+            if(guide!=null)guide.play();
+            importedBacking.start();
             playing=true;
         }catch(Exception e){
             playbackError=e.getClass().getSimpleName();
             stopPlayback();
-            notice="בדוק קובץ ליווי";
+            notice="קובץ ליווי?";
             stage=Stage.HOME;
         }
     }
     private void stopPlayback(){
         playing=false;
-        if(demoBacking!=null){demoBacking.close();demoBacking=null;}
         if(importedBacking!=null){
             try{importedBacking.release();}catch(Exception ignored){}
             importedBacking=null;
+        }
+        if(recordedGuide!=null){
+            try{recordedGuide.release();}catch(Exception ignored){}
+            recordedGuide=null;
         }
         if(guide!=null){guide.close();guide=null;}
     }
     private void pausePlay(){
         if(stage!=Stage.SONG)return;
         if(playing){
-            if(usingDemo && demoBacking!=null)demoBacking.pause();
-            else if(importedBacking!=null)importedBacking.pause();
+            if(importedBacking!=null)importedBacking.pause();
+            if(recordedGuide!=null)recordedGuide.pause();
             if(guide!=null)guide.pause();
             playing=false;
-        }else {
-            if(usingDemo && demoBacking!=null)demoBacking.play();
-            else if(importedBacking!=null) {
-                if(guide!=null){guide.alignTo(importedBacking.getCurrentPosition());guide.play();}
+        }else{
+            if(importedBacking!=null){
+                int position=importedBacking.getCurrentPosition();
+                if(recordedGuide!=null){
+                    recordedGuide.seekTo(position);
+                    recordedGuide.start();
+                }
+                if(guide!=null){guide.alignTo(position);guide.play();}
                 importedBacking.start();
+                playing=true;
             }
-            playing=true;
         }
     }
     private void restartPlayback(){stage=Stage.SONG;startPlayback();}
@@ -334,8 +355,8 @@ public final class GoldenActivity extends Activity {
     private void changeVolume(){
         volumeLevel=(volumeLevel+1)%3;
         float vol=volumeLevel==0?0:volumeLevel==1?.34f:.7f;
-        if(demoBacking!=null)demoBacking.setVolume(vol);
         if(importedBacking!=null)importedBacking.setVolume(vol,vol);
+        if(recordedGuide!=null)recordedGuide.setVolume(vol,vol);
         if(guide!=null)guide.setVolume(vol);
     }
     private void pickFile(int code){
@@ -372,19 +393,26 @@ public final class GoldenActivity extends Activity {
                         .putString("midiUri",uri.toString()).apply();
                     notice="✓ MIDI";
                 }
-            }else if(request==PICK_BACKING){
+            }else if(request==PICK_BACKING || request==PICK_GUIDE){
                 MediaPlayer test=new MediaPlayer();
                 try{
                     test.setDataSource(this,uri);test.prepare();
                     if(test.getDuration()<=0)throw new Exception("Empty audio");
                 }finally{test.release();}
-                backingUri=uri;
-                getPreferences(MODE_PRIVATE).edit()
-                    .putString("backingUri",uri.toString()).apply();
-                notice="✓ ליווי";
+                if(request==PICK_BACKING){
+                    backingUri=uri;
+                    getPreferences(MODE_PRIVATE).edit()
+                        .putString("backingUri",uri.toString()).apply();
+                    notice="✓ ליווי";
+                }else if(progression!=null){
+                    recordedGuideUri=uri;
+                    getPreferences(MODE_PRIVATE).edit()
+                        .putString(stemKey(),uri.toString()).apply();
+                    notice="✓ STEM";
+                }
             }
         }catch(Exception e){
-            notice=request==PICK_MIDI?"MIDI לא תקין":"קובץ ליווי לא תקין";
+            notice=request==PICK_MIDI?"MIDI לא תקין":"אודיו לא תקין";
         }
         view.invalidate();
     }
