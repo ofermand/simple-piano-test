@@ -10,8 +10,12 @@ android {
         applicationId 'com.simplepianotest.app'
         minSdk 26
         targetSdk 34
-        versionCode 12
-        versionName '1.2-voice-and-levels'
+        versionCode 13
+        versionName '1.3-natural-hebrew'
+    }
+
+    androidResources {
+        noCompress 'mp3'
     }
 
     compileOptions {
