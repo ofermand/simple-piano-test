@@ -70,6 +70,8 @@ public final class MainActivity extends Activity {
     private int voiceSerial=0;
     private long ignoreMicUntil=0;
     private int spokenSongHitMilestone=0;
+    private int wrongLessonFrames=0;
+    private long lastVoiceHintAt=0;
 
     /**
      * Short Hebrew prompts, using the device's own speech engine.
@@ -148,6 +150,17 @@ public final class MainActivity extends Activity {
         }
         getPreferences(MODE_PRIVATE).edit().putBoolean("voice_enabled",voiceEnabled).apply();
         if(gameView!=null)gameView.invalidate();
+    }
+    private void gentlyGuide(int target){
+        if(!voiceEnabled || !voiceAvailable)return;
+        long now=SystemClock.elapsedRealtime();
+        if(now-lastVoiceHintAt<8000)return;
+        wrongLessonFrames++;
+        if(wrongLessonFrames<10)return;
+        wrongLessonFrames=0;
+        lastVoiceHintAt=now;
+        speak("כמעט. חפשו את "+name(target)+
+            " בחמשה ובפסנתר הקטן, ונסו שוב.");
     }
     private void promptPractice(){
         int target=practiceNotes[Math.min(practiceStep,practiceNotes.length-1)];
@@ -330,10 +343,13 @@ public final class MainActivity extends Activity {
             if(isMatchingPracticeNote(midi,expected)) {
                 if(!lessonRecognized){
                     lessonRecognized=true;
+                    wrongLessonFrames=0;
                     status="כל הכבוד! זיהיתי את "+name(expected)+" בפסנתר שלך!";
                     speak("יופי! זה "+name(expected)+". לחצו על המשך.");
                 }
                 gameView.invalidate();
+            }else if(!lessonRecognized){
+                gentlyGuide(expected);
             }
             return;
         }
@@ -344,6 +360,7 @@ public final class MainActivity extends Activity {
                 if(now-lastPracticeHitAt<350)return;
                 practiceStep++;
                 lastPracticeHitAt=now;
+                wrongLessonFrames=0;
                 status=practiceStep==practiceNotes.length?
                     "נהדר! עכשיו מנגנים את השיר המלא!" :
                     "יופי! עכשיו נגן "+name(practiceNotes[practiceStep]);
@@ -351,6 +368,8 @@ public final class MainActivity extends Activity {
                     speak("כל הכבוד! סיימתם לתרגל. עכשיו מנגנים את כל השיר!");
                 else speak("מצוין! עכשיו "+name(practiceNotes[practiceStep])+".");
                 gameView.invalidate();
+            }else if(now-lastPracticeHitAt>1500){
+                gentlyGuide(expected);
             }
         }
     }
@@ -360,11 +379,13 @@ public final class MainActivity extends Activity {
         phase=Phase.PRACTICE;
         practiceStep=0;
         lastPracticeHitAt=0;
+        wrongLessonFrames=0;
         status="בוא נתרגל שוב את התווים שלמדת";
         promptPractice();
         gameView.invalidate();
     }
     private void advanceLesson(){
+        wrongLessonFrames=0;
         if(phase==Phase.WELCOME){
             phase=levelIndex==0?Phase.TEACH_C:Phase.TEACH_EXTRA;
             lessonRecognized=false;
@@ -400,6 +421,7 @@ public final class MainActivity extends Activity {
         practiceStep=0;
         lastPracticeHitAt=0;
         lessonRecognized=false;
+        wrongLessonFrames=0;
         phase=Phase.TEACH_EXTRA;
         int newPitch=SongProgression.newestPitch(levelIndex);
         status="תו חדש! נמצא את "+name(newPitch)+" וננגן אותו";
