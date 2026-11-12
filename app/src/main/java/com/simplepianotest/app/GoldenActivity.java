@@ -32,9 +32,10 @@ import java.util.Locale;
 /**
  * Minimal-text neon K-pop piano prototype.
  *
- * The Golden melody and backing are not bundled. An authorized user imports
- * a MIDI melody track and a synchronized instrumental audio file. The
- * public-domain Twinkle demo remains available to test the complete flow.
+ * The Golden melody and backing are not bundled. The user imports a
+ * licensed MIDI melody, a synchronized instrumental recording, and optionally
+ * a professional melody-guide stem for each learning level. All lesson notes
+ * and scores come from that imported Golden MIDI track, never a demo song.
  */
 public final class GoldenActivity extends Activity {
     private static final int PICK_MIDI=201, PICK_BACKING=202, MIC_PERMISSION=203, PICK_GUIDE=204;
