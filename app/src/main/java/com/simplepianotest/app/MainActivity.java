@@ -65,6 +65,7 @@ public final class MainActivity extends Activity {
     private String status="הפסנתר שלך מנגן את המלודיה, אנחנו את הליווי";
     private boolean pausedByLifecycle=false;
     private TextToSpeech voice;
+    private RecordedVoicePlayer recordedVoice;
     private boolean voiceAvailable=false,voiceEnabled=true,voiceBusy=false;
     private String activeVoiceId="";
     private int voiceSerial=0;
@@ -80,6 +81,11 @@ public final class MainActivity extends Activity {
      */
     private void initVoice(){
         voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voice_enabled",true);
+        recordedVoice=new RecordedVoicePlayer(this);
+        // Natural MP3 prompts are available immediately, even without an
+        // installed Hebrew speech engine or internet on the child's phone.
+        if(recordedVoice.has("welcome"))speak(
+            "ברוכים הבאים! נלמד כמה תווים וננגן את כל כוכב קטן. לחצו על הכפתור כדי להתחיל.");
         voice=new TextToSpeech(this, status->mainHandler.post(()->{
             if(status!=TextToSpeech.SUCCESS || voice==null)return;
             int lang=voice.setLanguage(Locale.forLanguageTag("he-IL"));
@@ -104,9 +110,10 @@ public final class MainActivity extends Activity {
                     mainHandler.post(()->finishVoice(id));
                 }
             });
-            speak(phase==Phase.WELCOME?
-                "ברוכים הבאים! נלמד כמה תווים וננגן את כל כוכב קטן. לחצו על הכפתור כדי להתחיל.":
-                "מוכנים לנגן? לחצו להתחלה!");
+            if(recordedVoice==null || !recordedVoice.has("welcome"))
+                speak(phase==Phase.WELCOME?
+                    "ברוכים הבאים! נלמד כמה תווים וננגן את כל כוכב קטן. לחצו על הכפתור כדי להתחיל.":
+                    "מוכנים לנגן? לחצו להתחלה!");
         }));
     }
     private void finishVoice(String id){
@@ -118,11 +125,24 @@ public final class MainActivity extends Activity {
         activeVoiceId="";
         voiceBusy=false;
         ignoreMicUntil=SystemClock.elapsedRealtime()+200;
+        if(recordedVoice!=null)recordedVoice.stop();
         if(voice!=null)voice.stop();
     }
     private void speak(String message){
-        if(!voiceEnabled || !voiceAvailable || voice==null || isFinishing())return;
-        activeVoiceId="piano_he_"+(++voiceSerial);
+        if(!voiceEnabled || isFinishing())return;
+        String clipId=VoicePhrases.clipFor(message);
+        if(recordedVoice!=null && recordedVoice.has(clipId)){
+            stopVoice();
+            String playbackId="piano_clip_"+(++voiceSerial);
+            activeVoiceId=playbackId;
+            voiceBusy=true;
+            if(recordedVoice.play(clipId,()->finishVoice(playbackId)))return;
+            finishVoice(playbackId);
+        }
+        // Backup only for missing clips: keep the original Android TTS.
+        if(!voiceAvailable || voice==null)return;
+        stopVoice();
+        activeVoiceId="piano_tts_"+(++voiceSerial);
         voiceBusy=true;
         int result=voice.speak(message,TextToSpeech.QUEUE_FLUSH,null,activeVoiceId);
         if(result==TextToSpeech.ERROR)finishVoice(activeVoiceId);
@@ -133,7 +153,7 @@ public final class MainActivity extends Activity {
             stopVoice();
         }else{
             voiceEnabled=true;
-            if(voiceAvailable){
+            if(voiceAvailable || (recordedVoice!=null && recordedVoice.hasClips())){
                 if(phase==Phase.WELCOME)
                     speak("ברוכים הבאים! מתחילים ללמוד תווים ולנגן שיר שלם.");
                 else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G ||
@@ -152,7 +172,7 @@ public final class MainActivity extends Activity {
         if(gameView!=null)gameView.invalidate();
     }
     private void gentlyGuide(int target){
-        if(!voiceEnabled || !voiceAvailable)return;
+        if(!voiceEnabled || !(voiceAvailable || (recordedVoice!=null && recordedVoice.hasClips())))return;
         long now=SystemClock.elapsedRealtime();
         if(now-lastVoiceHintAt<8000)return;
         wrongLessonFrames++;
@@ -516,6 +536,7 @@ public final class MainActivity extends Activity {
         mainHandler.removeCallbacks(ticker);
         if(pitchDetector!=null)pitchDetector.stop();
         if(player!=null)player.close();
+        if(recordedVoice!=null){recordedVoice.stop();recordedVoice=null;}
         if(voice!=null){voice.stop();voice.shutdown();voice=null;}
         super.onDestroy();
     }
