@@ -468,114 +468,155 @@ public final class GoldenActivity extends Activity {
             else result(screen);
             screen.restore();
         }
+        private final int ELECTRIC=0xff3cf7f2, HOT=0xffff36a7, ACID=0xffccff35,
+            PURPLE=0xff9b4bff, INK=0xff06081c;
+        private void polygon(Canvas c,float[] points,int fill){
+            Path path=new Path();path.moveTo(points[0],points[1]);
+            for(int i=2;i<points.length;i+=2)path.lineTo(points[i],points[i+1]);
+            path.close();
+            paint.reset();paint.setAntiAlias(true);paint.setColor(fill);
+            c.drawPath(path,paint);
+        }
         private void background(Canvas c){
             paint.reset();paint.setAntiAlias(true);
             paint.setShader(new LinearGradient(0,0,width,600,
-                new int[]{0xff080e2b,0xff20204e,0xff10172f},null,
-                Shader.TileMode.CLAMP));
+                new int[]{0xff050313,0xff19054a,0xff050d25},null,Shader.TileMode.CLAMP));
             c.drawRect(0,0,width,600,paint);paint.setShader(null);
-            circle(c,width-160,125,110,0x1338faff);
-            circle(c,140,475,130,0x18ff61c4);
-            circle(c,width*.62f,500,80,0x14ffe080);
-            for(int i=0;i<29;i++){
-                float x=25+(i*179)%((int)Math.max(300,width-55));
-                float y=20+(i*71)%548;
-                circle(c,x,y,i%4==0?3:1.5f,0x669adaff);
+            // Extreme live-show laser wedges, stylized as an original stage.
+            polygon(c,new float[]{0,0,width*.31f,0,width*.10f,600,0,600},0x143cf7f2);
+            polygon(c,new float[]{width,0,width*.73f,0,width*.92f,600,width,600},0x19ff36a7);
+            polygon(c,new float[]{width*.53f,0,width*.65f,0,width*.45f,600},0x0eccff35);
+            for(int i=0;i<15;i++){
+                float y=290+i*26;
+                line(c,0,y,width,y,0x244f5193,1);
+            }
+            float center=width/2;
+            for(int i=-9;i<=9;i++)
+                line(c,center+i*80,600,center+i*42,290,0x2848d7ee,1);
+            for(int i=0;i<27;i++){
+                float x=(i*173+47)%Math.max(600,(int)width);
+                float y=25+(i*91)%505;
+                circle(c,x,y,(i%4==0)?3:1.3f,0x99d6edff);
+            }
+            float energy=(float)Math.min(1,.1+rms*100);
+            for(int i=0;i<26;i++){
+                float x=(width/2-285)+i*22;
+                float pulse=(float)Math.abs(Math.sin(i*1.63+SystemClock.elapsedRealtime()*.004));
+                float height=8+Math.min(45,(9+energy*35)*pulse);
+                round(c,x,570-height,x+11,570,3,i%3==0?0x99ff36a7:0x9946eee9);
             }
         }
         private void header(Canvas c){
-            text(c,"GOLDEN",40,72,49,YELLOW,true,Paint.Align.LEFT);
-            text(c,usingDemo&&stage!=Stage.HOME?"DEMO  •  TWINKLE":
-                "K-POP PIANO",42,99,14,0xffbac5ec,true,Paint.Align.LEFT);
-            text(c,micReady?"●":"○",width-40,58,24,
-                micReady?0xff4df1b5:0xffff93a2,true,Paint.Align.RIGHT);
+            // Glitch-style neon lettering and compact level information.
+            text(c,"GOLDEN",39,74,55,0x99ff36a7,true,Paint.Align.LEFT);
+            text(c,"GOLDEN",44,70,55,ACID,true,Paint.Align.LEFT);
+            text(c,"HUNTR/X  •  PIANO QUEST",46,98,14,ELECTRIC,true,Paint.Align.LEFT);
             if(stage!=Stage.HOME){
-                text(c,stage==Stage.NOTE_ONE?"01 / 03":
-                    stage==Stage.NOTE_TWO?"02 / 03":
-                    stage==Stage.PRACTICE?"03 / 03":"★",width-85,58,20,
-                    0xffd8d2ff,true,Paint.Align.RIGHT);
+                text(c,"LV "+String.format(Locale.US,"%02d",levelIndex+1),
+                    width-95,61,29,ACID,true,Paint.Align.RIGHT);
             }
+            circle(c,width-44,51,8,micReady?0xff63ffb5:0xffff7684);
+            if(learned && (stage==Stage.NOTE_ONE || stage==Stage.NOTE_TWO ||
+                stage==Stage.BONUS_NOTE))text(c,"✓",width/2,98,34,ACID,true,Paint.Align.CENTER);
         }
         private void home(Canvas c){
             float mid=width/2;
-            round(c,mid-360,140,mid+360,468,32,0xff22234e);
-            round(c,mid-360,140,mid+360,146,3,0xffff66b2);
-            text(c,"★  GOLDEN  ★",mid,217,54,YELLOW,true,Paint.Align.CENTER);
-            text(c,"HUNTR/X",mid,252,17,CYAN,true,Paint.Align.CENTER);
-            text(c,"♪",mid-205,333,66,PINK,true,Paint.Align.CENTER);
-            text(c,"♫",mid+207,333,66,CYAN,true,Paint.Align.CENTER);
-            first.set(mid-208,282,mid-20,347);
-            second.set(mid+20,282,mid+208,347);
-            pill(c,first,importedSong!=null?"✓ MIDI":"+ MIDI",0xff3b336e,Color.WHITE);
-            pill(c,second,backingUri!=null?"✓ ליווי":"+ ליווי",0xff3b336e,Color.WHITE);
-            third.set(mid-206,367,mid+206,430);
-            pill(c,third,"▶  GOLDEN",importedSong!=null&&backingUri!=null?PINK:0xff665d83,Color.WHITE);
-            fourth.set(mid-120,490,mid+120,545);
-            pill(c,fourth,"▶ DEMO",0xff2a4573,Color.WHITE);
-            fifth.set(mid+236,362,mid+337,428);
+            polygon(c,new float[]{mid-382,137,mid+382,137,mid+352,478,
+                mid-354,478},0xd510103c);
+            round(c,mid-350,142,mid+350,147,2,HOT);
+            round(c,mid-350,469,mid+350,474,2,ELECTRIC);
+            text(c,"★",mid-269,227,57,HOT,true,Paint.Align.CENTER);
+            text(c,"★",mid+269,227,57,ELECTRIC,true,Paint.Align.CENTER);
+            text(c,"GOLDEN",mid,226,72,ACID,true,Paint.Align.CENTER);
+            text(c,"PLAY THE SONG",mid,263,19,0xffe3dbff,true,Paint.Align.CENTER);
+            first.set(mid-310,303,mid-105,358);
+            second.set(mid-88,303,mid+115,358);
+            pill(c,first,importedSong==null?"+ NOTES":"✓ NOTES",0xff292454,ELECTRIC);
+            pill(c,second,backingUri==null?"+ AUDIO":"✓ AUDIO",0xff292454,ELECTRIC);
+            third.set(mid-310,390,mid+225,452);
+            pill(c,third,"▶   START",importedSong!=null&&backingUri!=null?HOT:0xff554767,Color.WHITE);
+            fourth.set(mid+131,303,mid+310,358);
+            pill(c,fourth,"+ STEM",0xff302450,ACID);
+            fifth.set(mid+237,390,mid+327,452);
             if(importedSong!=null && importedSong.tracks.size()>1)
-                pill(c,fifth,"♫ "+(trackIndex+1),0xff314766,CYAN);
-            if(!notice.isEmpty())text(c,notice,mid,567,15,0xffe9dff6,false,Paint.Align.CENTER);
+                pill(c,fifth,"♫ "+(trackIndex+1),0xff28285e,ELECTRIC);
+            if(!notice.isEmpty())
+                text(c,notice,mid,513,17,ACID,true,Paint.Align.CENTER);
         }
         private void lesson(Canvas c){
-            int pitch=lessonPitches[stage==Stage.NOTE_ONE?0:1];
+            int pitch=stage==Stage.BONUS_NOTE?progression.newestPitch(levelIndex):
+                lessonPitches[stage==Stage.NOTE_ONE?0:1];
             float mid=width/2;
-            text(c,GoldenLesson.name(pitch),mid,148,38,YELLOW,true,Paint.Align.CENTER);
+            text(c,stage==Stage.BONUS_NOTE?"NEW NOTE":"POWER NOTE",
+                mid,143,23,HOT,true,Paint.Align.CENTER);
+            text(c,GoldenLesson.name(pitch),mid,171,27,ACID,true,Paint.Align.CENTER);
             staff(c,pitch,false,-1);
-            keyboard(c,pitch,false);
-            text(c,learned?"✓":"♪",mid,502,35,
-                learned?0xff50f2b2:0xfff5eaff,true,Paint.Align.CENTER);
-            first.set(width-283,522,width-39,576);
-            pill(c,first,"→",PINK,Color.WHITE);
-            second.set(39,522,143,576);
-            pill(c,second,"‹",0xff343f6c,Color.WHITE);
+            keyboard(c,pitch,learned);
+            text(c,learned?"✓":"⚡",mid,504,32,
+                learned?0xff48ffaa:ACID,true,Paint.Align.CENTER);
+            first.set(width-286,520,width-39,577);
+            pill(c,first,"NEXT ▶",HOT,Color.WHITE);
+            second.set(39,520,155,577);
+            pill(c,second,"‹",0xff26225a,Color.WHITE);
         }
         private void practice(Canvas c){
-            int target=lessonPitches[Math.min(noteStep,3)%2];
-            text(c,(Math.min(noteStep,4))+" / 4",width/2,147,30,YELLOW,true,Paint.Align.CENTER);
-            staff(c,target,false,-1);
-            keyboard(c,target,false);
+            int pitch=practicePattern[Math.min(noteStep,practicePattern.length-1)];
+            float mid=width/2;
+            text(c,"COMBO",mid,143,25,HOT,true,Paint.Align.CENTER);
+            text(c,Math.min(noteStep,4)+" / 4",mid,171,27,ACID,true,Paint.Align.CENTER);
+            staff(c,pitch,false,-1);
+            keyboard(c,pitch,noteStep>0 && SystemClock.elapsedRealtime()-lastPracticeHitAt<320);
             for(int i=0;i<4;i++){
-                float x=width/2+(i-1.5f)*49;
-                circle(c,x,495,9,i<noteStep?0xff4befb5:
-                    i==noteStep?PINK:0xff57638d);
+                float x=mid+(i-1.5f)*54;
+                round(c,x-16,485,x+16,499,5,i<noteStep?0xff36f0b3:
+                    i==noteStep?HOT:0xff433c78);
             }
-            first.set(width-285,522,width-39,576);
-            pill(c,first,"▶",PINK,Color.WHITE);
-            second.set(39,522,143,576);
-            pill(c,second,"‹",0xff343f6c,Color.WHITE);
+            first.set(width-286,520,width-39,577);
+            pill(c,first,"PLAY ▶",HOT,Color.WHITE);
+            second.set(39,520,155,577);
+            pill(c,second,"‹",0xff26225a,Color.WHITE);
         }
         private void song(Canvas c){
-            float progress=usingDemo?
-                Math.max(0,Math.min(1,songPositionMs/40000f)):
-                importedBacking!=null?
-                    Math.max(0,Math.min(1,songPositionMs/(float)Math.max(1,importedBacking.getDuration()))):
-                    0;
-            round(c,42,124,width-42,132,4,0xff3b3c69);
-            round(c,42,124,42+(width-84)*progress,132,4,PINK);
+            float progress=importedBacking!=null?
+                Math.max(0,Math.min(1,songPositionMs/
+                    (float)Math.max(1,importedBacking.getDuration()))):0;
+            round(c,43,128,width-43,137,4,0xff373562);
+            round(c,43,128,43+(width-86)*progress,137,4,ACID);
             boolean recent=wasRecentHit();
             int target=recent && lastPlayedIndex<melody.size()?
                 GoldenLesson.normalized(melody.get(lastPlayedIndex).midi):
                 nextRequiredNote();
             staff(c,target,true,songPositionMs);
             keyboard(c,target,recent);
-            text(c,hits()+" / "+total(),width-47,492,23,YELLOW,true,Paint.Align.RIGHT);
-            first.set(width-190,522,width-39,576);
-            pill(c,first,playing?"Ⅱ":"▶",PINK,Color.WHITE);
-            second.set(36,522,120,576);pill(c,second,"‹",0xff323d6b,Color.WHITE);
-            third.set(133,522,217,576);pill(c,third,"↻",0xff323d6b,Color.WHITE);
-            fourth.set(230,522,323,576);
-            pill(c,fourth,volumeLevel==0?"◌":volumeLevel==1?"♪":"♫",0xff323d6b,CYAN);
+            text(c,hits()+" / "+total(),width-47,492,25,ACID,true,Paint.Align.RIGHT);
+            if(recent){
+                text(c,"PERFECT!",width-150,325,18,0xff51ffb5,true,Paint.Align.CENTER);
+            }
+            first.set(width-190,519,width-38,579);
+            pill(c,first,playing?"Ⅱ":"▶",HOT,Color.WHITE);
+            second.set(39,519,124,579);pill(c,second,"‹",0xff242255,Color.WHITE);
+            third.set(138,519,223,579);pill(c,third,"↻",0xff242255,Color.WHITE);
+            fourth.set(238,519,333,579);
+            pill(c,fourth,volumeLevel==0?"◌":volumeLevel==1?"♪":"♫",0xff242255,ELECTRIC);
         }
         private void result(Canvas c){
             float mid=width/2;
-            text(c,"★  ★  ★",mid,225,75,YELLOW,true,Paint.Align.CENTER);
-            text(c,hits()+" / "+total(),mid,332,62,Color.WHITE,true,Paint.Align.CENTER);
-            text(c,"GOLDEN",mid,381,34,PINK,true,Paint.Align.CENTER);
-            first.set(mid-8,442,mid+235,506);
-            pill(c,first,"↻",PINK,Color.WHITE);
-            second.set(mid-235,442,mid-25,506);
-            pill(c,second,"‹",0xff343f6c,Color.WHITE);
+            polygon(c,new float[]{mid-420,152,mid+420,152,mid+370,460,
+                mid-370,460},0xd510103c);
+            text(c,"★  ★  ★",mid,215,74,ACID,true,Paint.Align.CENTER);
+            text(c,"LEVEL "+(levelIndex+1),mid,273,30,ELECTRIC,true,Paint.Align.CENTER);
+            text(c,hits()+" / "+total(),mid,353,70,Color.WHITE,true,Paint.Align.CENTER);
+            text(c,progression!=null && progression.hasNext(levelIndex)?
+                "+1 NOTE UNLOCKED":"SONG MASTER",
+                mid,406,26,HOT,true,Paint.Align.CENTER);
+            first.set(mid+6,444,mid+272,506);
+            pill(c,first,progression!=null&&progression.hasNext(levelIndex)?
+                "NEXT LEVEL ▶":"REPLAY ↻",HOT,Color.WHITE);
+            second.set(mid-278,444,mid-8,506);
+            pill(c,second,"REPLAY ↻",0xff262a63,ELECTRIC);
+            third.set(mid-95,516,mid+95,573);
+            pill(c,third,recordedGuideUri==null?"+ STEM":"✓ STEM",
+                0xff25214f,ACID);
         }
         private int nextRequiredNote(){
             if(melody.isEmpty())return -1;
