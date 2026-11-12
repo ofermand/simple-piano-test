@@ -111,7 +111,8 @@ public final class MainActivity extends Activity {
             audioError=e.toString();
             status="שגיאה באתחול הליווי: "+audioError;
         }
-        status="מוכנים ללמוד שני תווים ולנגן שיר שלם?";
+        status=levelIndex==0?"מוכנים ללמוד שני תווים ולנגן שיר שלם?":
+            "מוכנים ללמוד עוד תו ולנגן שוב את השיר?";
         requestMicrophone();
     }
     private void immersive(){
@@ -606,18 +607,27 @@ public final class MainActivity extends Activity {
             text(c,"מקור מיקרופון: "+input,r-28,360,13,0xff80749a,false,Paint.Align.RIGHT);
         }
         private void drawResult(Canvas c){
-            text(c,"🏆  ⭐  🎉",logicalWidth/2,215,56,0xffffdb77,true,Paint.Align.CENTER);
-            text(c,"כל הכבוד! סיימת את השיר!",logicalWidth/2,273,34,Color.WHITE,true,Paint.Align.CENTER);
-            text(c,"ניגנת נכון "+hits()+" מתוך "+SongData.REQUIRED_NOTES+
-                " התווים שלך",logicalWidth/2,316,24,0xffc0f3de,true,Paint.Align.CENTER);
-            text(c,"הלהקה השלימה את שאר המלודיה. אפשר לנגן שוב!",logicalWidth/2,364,18,
-                0xffcce1ee,false,Paint.Align.CENTER);
-            text(c,"קלט יציב: "+stableWindows+"/"+pitchWindows+
-                "    צליל שונה: "+wrongPitchWindows+
-                "    תזמון: "+timingWindows,
-                logicalWidth/2,419,16,0xffffe4aa,false,Paint.Align.CENTER);
-            practiceReturnRect.set(logicalWidth/2-102,443,logicalWidth/2+102,482);
-            button(c,practiceReturnRect,"↩ לתרגול דו וסול",0xffe8f4ff,0xff345ba5);
+            float mid=logicalWidth/2;
+            text(c,"🏆  ⭐  🎉",mid,210,55,0xffffdb77,true,Paint.Align.CENTER);
+            text(c,"כל הכבוד! סיימת את השיר!",mid,270,33,Color.WHITE,true,Paint.Align.CENTER);
+            text(c,"ניגנת נכון "+hits()+" מתוך "+SongProgression.requiredNotes(levelIndex)+
+                " התווים שלך",mid,316,25,0xffc0f3de,true,Paint.Align.CENTER);
+            text(c,"רמה "+(levelIndex+1)+" • "+SongProgression.ownedCount(levelIndex)+
+                " תווים מתוך "+SongProgression.ownedCount(SongProgression.levels()-1),
+                mid,365,20,0xffd4d0fa,true,Paint.Align.CENTER);
+            if(SongProgression.hasNext(levelIndex)){
+                int next=SongProgression.nextPitch(levelIndex);
+                text(c,"הגיע הזמן להוסיף עוד תו!",mid,403,18,0xffcce1ee,true,Paint.Align.CENTER);
+                nextNoteRect.set(mid-209,421,mid+209,483);
+                button(c,nextNoteRect,"＋  לומדים "+name(next),
+                    0xff45dbbd,0xff10394a);
+            }else {
+                nextNoteRect.setEmpty();
+                text(c,"⭐ למדת את כל תווי השיר! ⭐",
+                    mid,454,25,0xffffe69a,true,Paint.Align.CENTER);
+            }
+            practiceReturnRect.set(41,435,229,481);
+            button(c,practiceReturnRect,"↩ חזרה לתרגול",0xffe8f4ff,0xff345ba5);
         }
         private int misses(){int n=0;for(int v:marks)if(v==2)n++;return n;}
         private void drawControls(Canvas c){
@@ -653,19 +663,24 @@ public final class MainActivity extends Activity {
             if(event.getAction()!=MotionEvent.ACTION_UP)return true;
             float x=event.getX()/scale,y=event.getY()/scale;
             if(phase==Phase.WELCOME || phase==Phase.TEACH_C ||
-                    phase==Phase.TEACH_G || phase==Phase.PRACTICE){
+                    phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA ||
+                    phase==Phase.PRACTICE){
                 if(learnPrimaryRect.contains(x,y))advanceLesson();
                 else if(learnBackRect.contains(x,y) && phase!=Phase.WELCOME){
-                    if(phase==Phase.TEACH_C)phase=Phase.WELCOME;
+                    if(phase==Phase.TEACH_C || phase==Phase.TEACH_EXTRA)
+                        phase=Phase.WELCOME;
                     else if(phase==Phase.TEACH_G)phase=Phase.TEACH_C;
-                    else if(phase==Phase.PRACTICE)phase=Phase.TEACH_G;
+                    else if(phase==Phase.PRACTICE)
+                        phase=levelIndex==0?Phase.TEACH_G:Phase.TEACH_EXTRA;
                     lessonRecognized=false;
                     status="מוכנים? נלמד עוד צעד קטן";
                 }
                 invalidate();
                 return true;
             }
-            if(practiceReturnRect.contains(x,y))returnToPractice();
+            if(phase==Phase.RESULTS && nextNoteRect.contains(x,y))
+                learnAnotherNote();
+            else if(practiceReturnRect.contains(x,y))returnToPractice();
             else if(playRect.contains(x,y))playPause();
             else if(resetRect.contains(x,y)){
                 if(phase==Phase.RESULTS)phase=Phase.SONG;
