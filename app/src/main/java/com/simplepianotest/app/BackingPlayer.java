@@ -18,12 +18,17 @@ final class BackingPlayer {
     private static final int BEATS = SongData.TOTAL_BEATS;
     private static final int COUNT_IN = SongData.COUNT_IN;
     private final int bpm;
+    private final int[] ownedPitches;
     private final File waveFile;
     private MediaPlayer mediaPlayer;
     private float volume=0.65f;
 
     BackingPlayer(Context context, int bpm) throws IOException {
+        this(context,bpm,new int[]{60,67});
+    }
+    BackingPlayer(Context context,int bpm,int[] ownedPitches)throws IOException {
         this.bpm=bpm;
+        this.ownedPitches=ownedPitches.clone();
         waveFile=new File(context.getCacheDir(), "simplepiano_backing_"+bpm+".wav");
         generateWav();
         preparePlayer();
@@ -53,7 +58,7 @@ final class BackingPlayer {
         // reflect the real instrument, rather than the phone's own speaker.
         for(int i=0;i<SongData.MELODY.length;i++) {
             int midi=SongData.MELODY[i];
-            if(!SongData.isChildNote(midi)) {
+            if(!GoldenLesson.owns(midi,ownedPitches)) {
                 double start=(COUNT_IN+SongData.STARTS[i])*beatSec;
                 double duration=SongData.LENGTHS[i]*beatSec;
                 addMelodyNote(mix,start,midi,duration);
