@@ -29,8 +29,10 @@ final class GoldenLesson {
         return new int[]{60+a,60+b};
     }
     static boolean owns(int midi,int[] pitches) {
-        return Math.floorMod(midi,12)==Math.floorMod(pitches[0],12) ||
-               Math.floorMod(midi,12)==Math.floorMod(pitches[1],12);
+        int pitchClass=Math.floorMod(midi,12);
+        for(int pitch:pitches)
+            if(Math.floorMod(pitch,12)==pitchClass)return true;
+        return false;
     }
     static boolean sameNote(double heard,int target){
         double diff=Math.abs(heard-target);
