@@ -647,10 +647,13 @@ public final class GoldenActivity extends Activity {
         }
         private void staff(Canvas c,int target,boolean scroll,long pos) {
             float left=47,right=width-47,top=178,gap=21,bottom=top+4*gap;
-            round(c,left,154,right,294,22,0xfff9f7ff);
+            round(c,left+1,155,right+2,298,22,0x55fc37ad);
+            round(c,left,154,right,294,22,0xff181039);
+            // Neon staff: note positions stay conventional.
             for(int i=0;i<5;i++)
-                line(c,left+25,top+i*gap,right-25,top+i*gap,0xffa7a8c5,1.7f);
-            text(c,"𝄞",left+56,bottom-5,66,0xff565a92,false,Paint.Align.CENTER);
+                line(c,left+25,top+i*gap,right-25,top+i*gap,0xff59538f,1.7f);
+            line(c,left+28,159,right-28,159,0x88994bff,1.6f);
+            text(c,"𝄞",left+55,bottom-5,66,0xffbc9bff,false,Paint.Align.CENTER);
             if(!scroll){
                 drawNote(c,width/2+5,target,bottom,gap,CYAN,false);
             }else {
@@ -661,8 +664,9 @@ public final class GoldenActivity extends Activity {
                     float x=head+(note.startMs-pos)*.145f;
                     if(x<left+90 || x>right-31)continue;
                     int mark=marks[i];
-                    int col=mark==3?0xffc5c2d4:mark==1?0xff25bb84:
-                        mark==2?0xffeb6688:GoldenLesson.owns(note.midi,lessonPitches)?PINK:0xffaaa6b9;
+                    int col=mark==3?0xff69617d:mark==1?0xff4bf6b5:
+                        mark==2?0xffff5272:
+                        GoldenLesson.owns(note.midi,ownedPitches)?HOT:0xff69617d;
                     drawNote(c,x,note.midi,bottom,gap,col,mark==1);
                 }
             }
@@ -674,7 +678,12 @@ public final class GoldenActivity extends Activity {
             if(GoldenLesson.normalized(midi)==60)
                 line(c,x-25,y,x+25,y,0xff76718f,2);
             if(GoldenLesson.sharp(midi))
-                text(c,"♯",x-25,y+7,23,0xff5c5879,true,Paint.Align.CENTER);
+                text(c,"♯",x-25,y+7,23,0xffbdb2d9,true,Paint.Align.CENTER);
+            // Layered halo makes child-owned notes pop in the scrolling score.
+            if(color==HOT || color==ELECTRIC || color==0xff4bf6b5){
+                circle(c,x,y,24,(color&0x00ffffff)|0x32000000);
+                circle(c,x,y,18,(color&0x00ffffff)|0x33000000);
+            }
             paint.reset();paint.setAntiAlias(true);
             paint.setColor(color);
             c.save();c.rotate(-17,x,y);
@@ -687,7 +696,8 @@ public final class GoldenActivity extends Activity {
             float boardWidth=Math.min(680,width-120);
             float left=(width-boardWidth)/2,top=326;
             float keyWidth=boardWidth/8;
-            round(c,left-14,top-14,left+boardWidth+14,top+129,17,0xff181d40);
+            round(c,left-19,top-19,left+boardWidth+19,top+132,18,0xff8c338f);
+            round(c,left-15,top-16,left+boardWidth+15,top+129,17,0xff10122e);
             int[] white={0,2,4,5,7,9,11,12};
             int requested=target<0?-1:Math.floorMod(target,12);
             for(int i=0;i<8;i++){
@@ -695,11 +705,11 @@ public final class GoldenActivity extends Activity {
                 int semitone=white[i]%12;
                 boolean selected=requested>=0 && semitone==requested &&
                     white[i]<12 && !GoldenLesson.sharp(target);
-                int fill=selected?(success?0xff4defb7:0xff6ce3eb):0xfff6f5ff;
+                int fill=selected?(success?0xff4dffb6:0xffbeff3a):0xffeeeeff;
                 round(c,x+1,top,x+keyWidth-2,top+111,6,fill);
                 if(selected) {
                     round(c,x+9,top+90,x+keyWidth-12,top+103,5,
-                        success?0xff0d8a69:0xff0d849a);
+                        success?0xff008c6e:0xff587b00);
                 }
             }
             // Black notes occur between C/D, D/E, F/G, G/A and A/B.
@@ -708,12 +718,12 @@ public final class GoldenActivity extends Activity {
                 float x=left+(index[i]+1)*keyWidth;
                 boolean selected=requested==pitch[i];
                 round(c,x-keyWidth*.30f,top,x+keyWidth*.30f,top+68,5,
-                    selected?(success?0xff4defb7:PINK):0xff26304f);
+                    selected?(success?0xff4dffb6:HOT):0xff252044);
                 if(selected)round(c,x-keyWidth*.18f,top+45,x+keyWidth*.18f,
                     top+60,4,0xffffffff);
             }
-            if(target>=0)text(c,GoldenLesson.name(target),width/2,481,22,
-                success?0xff5aefb5:YELLOW,true,Paint.Align.CENTER);
+            if(target>=0)text(c,GoldenLesson.name(target),width/2,481,27,
+                success?0xff4dffb6:ACID,true,Paint.Align.CENTER);
         }
         private void pill(Canvas c,RectF area,String label,int background,int foreground) {
             round(c,area.left,area.top,area.right,area.bottom,15,background);
