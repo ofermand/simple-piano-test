@@ -38,6 +38,14 @@ jobs:
             app/src/main/java/com/simplepianotest/app/StaffNoteLayout.java \
             tests/com/simplepianotest/app/NoteTimingMatcherTest.java
           java -cp /tmp/simplepiano-timing com.simplepianotest.app.NoteTimingMatcherTest
+      - name: Test incremental note learning across the full song
+        run: |
+          mkdir -p /tmp/simplepiano-levels
+          javac -d /tmp/simplepiano-levels \
+            app/src/main/java/com/simplepianotest/app/SongData.java \
+            app/src/main/java/com/simplepianotest/app/SongProgression.java \
+            tests/com/simplepianotest/app/SongProgressionTest.java
+          java -cp /tmp/simplepiano-levels com.simplepianotest.app.SongProgressionTest
       - name: Verify Golden MIDI and compact music keyboard
         run: |
           mkdir -p /tmp/simplepiano-golden
