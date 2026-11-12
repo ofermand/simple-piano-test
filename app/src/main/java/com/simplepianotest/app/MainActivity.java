@@ -5,6 +5,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
+import android.media.AudioAttributes;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -61,6 +64,89 @@ public final class MainActivity extends Activity {
     private long lastHitAt=0,lastPitchAt=0;
     private String status="הפסנתר שלך מנגן את המלודיה, אנחנו את הליווי";
     private boolean pausedByLifecycle=false;
+    private TextToSpeech voice;
+    private boolean voiceAvailable=false,voiceEnabled=true,voiceBusy=false;
+    private String activeVoiceId="";
+    private int voiceSerial=0;
+    private long ignoreMicUntil=0;
+    private int spokenSongHitMilestone=0;
+
+    /**
+     * Short Hebrew prompts, using the device's own speech engine.
+     * The microphone is ignored while the phone itself is speaking, so that
+     * spoken prompts cannot receive credit for a piano note.
+     */
+    private void initVoice(){
+        voiceEnabled=getPreferences(MODE_PRIVATE).getBoolean("voice_enabled",true);
+        voice=new TextToSpeech(this, status->mainHandler.post(()->{
+            if(status!=TextToSpeech.SUCCESS || voice==null)return;
+            int lang=voice.setLanguage(Locale.forLanguageTag("he-IL"));
+            voiceAvailable=lang!=TextToSpeech.LANG_MISSING_DATA &&
+                lang!=TextToSpeech.LANG_NOT_SUPPORTED;
+            if(!voiceAvailable)return;
+            voice.setSpeechRate(.87f);
+            voice.setPitch(1.08f);
+            voice.setAudioAttributes(new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY).build());
+            voice.setOnUtteranceProgressListener(new UtteranceProgressListener(){
+                @Override public void onStart(String id){
+                    mainHandler.post(()->{
+                        if(id.equals(activeVoiceId))voiceBusy=true;
+                    });
+                }
+                @Override public void onDone(String id){
+                    mainHandler.post(()->finishVoice(id));
+                }
+                @Override public void onError(String id){
+                    mainHandler.post(()->finishVoice(id));
+                }
+            });
+            speak(phase==Phase.WELCOME?
+                "ברוכים הבאים! נלמד כמה תווים וננגן את כל כוכב קטן. לחצו על הכפתור כדי להתחיל.":
+                "מוכנים לנגן? לחצו להתחלה!");
+        }));
+    }
+    private void finishVoice(String id){
+        if(!id.equals(activeVoiceId))return;
+        voiceBusy=false;
+        ignoreMicUntil=SystemClock.elapsedRealtime()+240;
+    }
+    private void stopVoice(){
+        activeVoiceId="";
+        voiceBusy=false;
+        ignoreMicUntil=SystemClock.elapsedRealtime()+200;
+        if(voice!=null)voice.stop();
+    }
+    private void speak(String message){
+        if(!voiceEnabled || !voiceAvailable || voice==null || isFinishing())return;
+        activeVoiceId="piano_he_"+(++voiceSerial);
+        voiceBusy=true;
+        int result=voice.speak(message,TextToSpeech.QUEUE_FLUSH,null,activeVoiceId);
+        if(result==TextToSpeech.ERROR)finishVoice(activeVoiceId);
+    }
+    private void promptPractice(){
+        int target=practiceNotes[Math.min(practiceStep,practiceNotes.length-1)];
+        speak("בואו נתרגל. הסתכלו על התו בחמשה ועל הקליד המואר, ונגנו "+
+            name(target)+".");
+    }
+    private void spokenSongFeedback(){
+        int count=hits();
+        if(count<4 || count/4<=spokenSongHitMilestone)return;
+        // Speak only when there is enough time until the next child's note,
+        // to avoid interrupting recognition during a quick passage.
+        double nextRequired=Double.POSITIVE_INFINITY;
+        for(int i=0;i<MELODY.length;i++){
+            if(childOwns(MELODY[i]) && marks[i]==0 && STARTS[i]>=beat){
+                nextRequired=STARTS[i]-beat;
+                break;
+            }
+        }
+        if(nextRequired>2.2){
+            spokenSongHitMilestone=count/4;
+            speak("מעולה!");
+        }
+    }
 
     private final Runnable ticker=new Runnable(){
         @Override public void run(){
@@ -79,6 +165,10 @@ public final class MainActivity extends Activity {
                     playing=false;finished=true;phase=Phase.RESULTS;
                     status="כל הכבוד! ניגנת שיר שלם!";
                     player.pause();
+                    if(SongProgression.hasNext(levelIndex))
+                        speak("איזה יופי! סיימתם את כל השיר. רוצים ללמוד עוד תו? לחצו על הוספת תו.");
+                    else
+                        speak("אלופים! למדתם את כל תווי השיר!");
                 }
             }
             if(gameView!=null)gameView.invalidate();
@@ -113,6 +203,7 @@ public final class MainActivity extends Activity {
         }
         status=levelIndex==0?"מוכנים ללמוד שני תווים ולנגן שיר שלם?":
             "מוכנים ללמוד עוד תו ולנגן שוב את השיר?";
+        initVoice();
         requestMicrophone();
     }
     private void immersive(){
@@ -143,6 +234,7 @@ public final class MainActivity extends Activity {
         if(isFinishing()||isDestroyed())return;
         signalRms=rms;
         lastPitchConfidence=confidence;
+        if(voiceBusy || SystemClock.elapsedRealtime()<ignoreMicUntil)return;
         if(playing && beat>=0 && beat<TOTAL_BEATS)pitchWindows++;
         if(hz<0 || confidence<.52){
             lastPitchHz=-1;
@@ -198,6 +290,7 @@ public final class MainActivity extends Activity {
         status=otherOctave
                 ? "נכון! "+name(target)+" באוקטבה אחרת"
                 : "מעולה! ניגנת "+name(target)+"! ✓";
+        spokenSongFeedback();
         gameView.invalidate();
     }
     private boolean isMatchingPracticeNote(double detectedMidi,int target) {
@@ -211,8 +304,11 @@ public final class MainActivity extends Activity {
             int expected=phase==Phase.TEACH_EXTRA?SongProgression.newestPitch(levelIndex):
                 phase==Phase.TEACH_C?60:67;
             if(isMatchingPracticeNote(midi,expected)) {
-                lessonRecognized=true;
-                status="כל הכבוד! זיהיתי את "+name(expected)+" בפסנתר שלך!";
+                if(!lessonRecognized){
+                    lessonRecognized=true;
+                    status="כל הכבוד! זיהיתי את "+name(expected)+" בפסנתר שלך!";
+                    speak("יופי! זה "+name(expected)+". לחצו על המשך.");
+                }
                 gameView.invalidate();
             }
             return;
@@ -227,6 +323,9 @@ public final class MainActivity extends Activity {
                 status=practiceStep==practiceNotes.length?
                     "נהדר! עכשיו מנגנים את השיר המלא!" :
                     "יופי! עכשיו נגן "+name(practiceNotes[practiceStep]);
+                if(practiceStep==practiceNotes.length)
+                    speak("כל הכבוד! סיימתם לתרגל. עכשיו מנגנים את כל השיר!");
+                else speak("מצוין! עכשיו "+name(practiceNotes[practiceStep])+".");
                 gameView.invalidate();
             }
         }
@@ -238,6 +337,7 @@ public final class MainActivity extends Activity {
         practiceStep=0;
         lastPracticeHitAt=0;
         status="בוא נתרגל שוב את התווים שלמדת";
+        promptPractice();
         gameView.invalidate();
     }
     private void advanceLesson(){
@@ -246,15 +346,19 @@ public final class MainActivity extends Activity {
             lessonRecognized=false;
             int target=levelIndex==0?60:SongProgression.newestPitch(levelIndex);
             status="נגן "+name(target)+" על הפסנתר כדי להתחיל";
+            speak("הסתכלו על החמשה ועל הפסנתר הקטן. מצאו את "+
+                name(target)+" ונגנו אותו בפסנתר האמיתי.");
         }else if(phase==Phase.TEACH_C){
             phase=Phase.TEACH_G;
             lessonRecognized=false;
             status="מצא את סול ונגן אותו";
+            speak("עכשיו נלמד את סול. הוא על הקו השני מלמטה. מצאו את הקליד המואר ונגנו סול.");
         }else if(phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA){
             phase=Phase.PRACTICE;
             practiceStep=0;
             lastPracticeHitAt=0;
             status="בוא נתרגל את התווים לפני השיר";
+            promptPractice();
         }else if(phase==Phase.PRACTICE){
             phase=Phase.SONG;
             reset();
@@ -275,6 +379,8 @@ public final class MainActivity extends Activity {
         phase=Phase.TEACH_EXTRA;
         int newPitch=SongProgression.newestPitch(levelIndex);
         status="תו חדש! נמצא את "+name(newPitch)+" וננגן אותו";
+        speak("כל הכבוד! הרווחתם תו חדש: "+name(newPitch)+
+            ". הסתכלו על החמשה, מצאו את הקליד המואר ונגנו אותו.");
         try {
             player=new BackingPlayer(this,bpm,learnedPitches());
             player.setVolume(backingVolume());
@@ -307,6 +413,7 @@ public final class MainActivity extends Activity {
             if(!everStarted){everStarted=true;beat=-4;}
             try {
                 player.play();playing=true;
+                if(beat<0)speak("הקשיבו לספירה. מוכנים? מנגנים!");
                 status="הקשב לספירה ואז נגן את התו המואר!";
                 audioError="";
             } catch(Exception e) {
@@ -327,6 +434,7 @@ public final class MainActivity extends Activity {
             }
         }
         playing=false;everStarted=false;finished=false;beat=-4;current=0;lastHitMidi=-1;lastHitAt=0;
+        spokenSongHitMilestone=0;
         for(int i=0;i<marks.length;i++)
             marks[i]=childOwns(MELODY[i])?0:3;
         pitchWindows=stableWindows=wrongPitchWindows=timingWindows=0;
@@ -356,9 +464,15 @@ public final class MainActivity extends Activity {
             .setPositiveButton("סגירה",(d,w)->d.dismiss()).show();
     }
     private int hits(){int n=0;for(int v:marks)if(v==1)n++;return n;}
-    @Override public void onPause(){super.onPause();pausedByLifecycle=playing;if(playing)playPause();if(pitchDetector!=null)pitchDetector.stop();micOn=false;}
+    @Override public void onPause(){super.onPause();pausedByLifecycle=playing;if(playing)playPause();stopVoice();if(pitchDetector!=null)pitchDetector.stop();micOn=false;}
     @Override public void onResume(){super.onResume();immersive();if(gameView!=null && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED && !micOn)startMicrophone();}
-    @Override public void onDestroy(){mainHandler.removeCallbacks(ticker);if(pitchDetector!=null)pitchDetector.stop();if(player!=null)player.close();super.onDestroy();}
+    @Override public void onDestroy(){
+        mainHandler.removeCallbacks(ticker);
+        if(pitchDetector!=null)pitchDetector.stop();
+        if(player!=null)player.close();
+        if(voice!=null){voice.stop();voice.shutdown();voice=null;}
+        super.onDestroy();
+    }
 
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
