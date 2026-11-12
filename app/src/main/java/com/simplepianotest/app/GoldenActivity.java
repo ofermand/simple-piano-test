@@ -43,7 +43,7 @@ public final class GoldenActivity extends Activity {
     private GoldenView view;
     private final Handler main=new Handler(Looper.getMainLooper());
     private PitchDetector mic;
-    private boolean micReady=false,playing=false,usingDemo=false,learned=false;
+    private boolean micReady=false,playing=false,learned=false;
     private int noteStep=0, trackIndex=0, volumeLevel=1, levelIndex=0;
     private GoldenProgression progression;
     private int[] ownedPitches={60,67};
@@ -54,7 +54,6 @@ public final class GoldenActivity extends Activity {
     private GoldenMidi.Song importedSong;
     private int[] marks=new int[0]; // 0 child-pending, 1 hit, 2 miss, 3 backing-only
     private Uri midiUri,backingUri,recordedGuideUri;
-    private BackingPlayer demoBacking;
     private MediaPlayer importedBacking;
     private GoldenGuidePlayer guide;
     private MediaPlayer recordedGuide;
@@ -82,10 +81,7 @@ public final class GoldenActivity extends Activity {
     private final Runnable ticker=new Runnable(){
         @Override public void run(){
             if(stage==Stage.SONG && playing) {
-                if(usingDemo && demoBacking!=null){
-                    songPositionMs=Math.round(demoBacking.getBeatPosition()*60000.0/72);
-                    if(songPositionMs>=40000)endSong();
-                } else if(importedBacking!=null) {
+                if(importedBacking!=null) {
                     songPositionMs=importedBacking.getCurrentPosition();
                     if(songPositionMs>=importedBacking.getDuration()-90 && !importedBacking.isPlaying())
                         endSong();
@@ -167,74 +163,104 @@ public final class GoldenActivity extends Activity {
         notice="✓";
         view.invalidate();
     }
-    private void chooseDemo(){
-        usingDemo=true;
-        melody.clear();
-        for(int i=0;i<SongData.MELODY.length;i++){
-            long start=Math.round(SongData.STARTS[i]*60000.0/72.0);
-            long end=Math.round((SongData.STARTS[i]+SongData.LENGTHS[i])*60000.0/72.0);
-            melody.add(new GoldenMidi.Note(SongData.MELODY[i],start,end));
+    private String songKey(){
+        return "golden_level_"+(midiUri==null?"none":midiUri.toString()).hashCode()+"_track_"+trackIndex;
+    }
+    private String stemKey(){
+        return "golden_stem_"+songKey()+"_level_"+levelIndex;
+    }
+    private void applyLevel(){
+        if(progression==null)return;
+        levelIndex=progression.clamp(levelIndex);
+        ownedPitches=progression.ownedAt(levelIndex);
+        lessonPitches[0]=ownedPitches[0];
+        lessonPitches[1]=ownedPitches[1];
+        if(levelIndex==0){
+            practicePattern=new int[]{lessonPitches[0],lessonPitches[1],
+                lessonPitches[0],lessonPitches[1]};
+        }else{
+            int newest=progression.newestPitch(levelIndex);
+            int previous=ownedPitches[ownedPitches.length-2];
+            practicePattern=new int[]{newest,previous,newest,previous};
         }
-        lessonPitches[0]=60;lessonPitches[1]=67;
-        startLearning();
+        String uri=getPreferences(MODE_PRIVATE).getString(stemKey(),null);
+        recordedGuideUri=uri==null?null:Uri.parse(uri);
     }
     private void chooseGolden(){
-        if(importedSong==null || backingUri==null) {
-            notice="בחר MIDI וליווי";
+        if(importedSong==null || backingUri==null){
+            notice="בחרו תווים וליווי";
             return;
         }
-        usingDemo=false;
         melody.clear();
         melody.addAll(importedSong.tracks.get(trackIndex).notes);
-        int[] pair=GoldenLesson.choose(melody);
-        lessonPitches[0]=pair[0];lessonPitches[1]=pair[1];
+        if(melody.isEmpty()){notice="קובץ תווים ריק";return;}
+        progression=new GoldenProgression(melody);
+        levelIndex=getPreferences(MODE_PRIVATE).getInt(songKey(),0);
+        applyLevel();
         startLearning();
+    }
+    private void resetPractice(){
+        noteStep=0;
+        lastPracticeHitAt=0;
+        learned=false;
+        notice="";
+        for(int i=0;i<practiceMarks.length;i++)practiceMarks[i]=0;
+    }
+    private void resetMarks(){
+        marks=new int[melody.size()];
+        for(int i=0;i<melody.size();i++)
+            marks[i]=GoldenLesson.owns(melody.get(i).midi,ownedPitches)?0:3;
     }
     private void startLearning(){
         stopPlayback();
-        marks=new int[melody.size()];
-        for(int i=0;i<melody.size();i++)
-            marks[i]=GoldenLesson.owns(melody.get(i).midi,lessonPitches)?0:3;
-        noteStep=0;learned=false;
-        for(int i=0;i<practiceMarks.length;i++)practiceMarks[i]=0;
-        stage=Stage.NOTE_ONE;
+        resetMarks();
+        resetPractice();
+        stage=levelIndex==0?Stage.NOTE_ONE:Stage.BONUS_NOTE;
         notice="";
+    }
+    private void unlockNextLevel(){
+        if(progression==null || !progression.hasNext(levelIndex))return;
+        levelIndex++;
+        getPreferences(MODE_PRIVATE).edit().putInt(songKey(),levelIndex).apply();
+        applyLevel();
+        startLearning();
     }
     private void next(){
         if(stage==Stage.NOTE_ONE){
             stage=Stage.NOTE_TWO;learned=false;notice="";
-        }else if(stage==Stage.NOTE_TWO){
-            stage=Stage.PRACTICE;noteStep=0;lastPracticeHitAt=0;notice="";
+        }else if(stage==Stage.NOTE_TWO || stage==Stage.BONUS_NOTE){
+            stage=Stage.PRACTICE;resetPractice();
         }else if(stage==Stage.PRACTICE){
             stage=Stage.SONG;
             startPlayback();
         }else if(stage==Stage.RESULT){
-            restartPlayback();
+            if(progression!=null && progression.hasNext(levelIndex))
+                unlockNextLevel();
+            else restartPlayback();
         }
         view.invalidate();
     }
     private void returnToPractice(){
         stopPlayback();
         stage=Stage.PRACTICE;
-        noteStep=0;lastPracticeHitAt=0;notice="";
-        for(int i=0;i<practiceMarks.length;i++)practiceMarks[i]=0;
+        resetPractice();
         view.invalidate();
     }
     private void previous(){
         if(stage==Stage.NOTE_ONE)stage=Stage.HOME;
         else if(stage==Stage.NOTE_TWO)stage=Stage.NOTE_ONE;
-        else if(stage==Stage.PRACTICE)stage=Stage.NOTE_TWO;
-        else if(stage==Stage.SONG || stage==Stage.RESULT){
+        else if(stage==Stage.BONUS_NOTE)stage=Stage.RESULT;
+        else if(stage==Stage.PRACTICE)
+            stage=levelIndex==0?Stage.NOTE_TWO:Stage.BONUS_NOTE;
+        else if(stage==Stage.SONG || stage==Stage.RESULT) {
             returnToPractice();return;
         }
-        learned=false;
-        notice="";
+        learned=false;notice="";
     }
     private void startPlayback(){
         stopPlayback();
-        for(int i=0;i<marks.length;i++)
-            marks[i]=GoldenLesson.owns(melody.get(i).midi,lessonPitches)?0:3;
-        songPositionMs=usingDemo?-3000:0;
+        resetMarks();
+        songPositionMs=0;
         lastHitAt=0;lastHitPitch=-1;lastPlayedIndex=-1;
         playbackError="";
         try {
