@@ -85,6 +85,13 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        // Keep the proven Little Star microphone/lesson flow until a REAL
+        // Golden content pack is bundled. Never present fake Golden notes.
+        if(GoldenPack.isInstalled(this)){
+            startActivity(new android.content.Intent(this,GoldenActivity.class));
+            finish();
+            return;
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         immersive();
         gameView=new GameView();setContentView(gameView);
