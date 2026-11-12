@@ -44,6 +44,7 @@ jobs:
           javac -d /tmp/simplepiano-golden \
             app/src/main/java/com/simplepianotest/app/GoldenMidi.java \
             app/src/main/java/com/simplepianotest/app/GoldenLesson.java \
+            app/src/main/java/com/simplepianotest/app/GoldenProgression.java \
             tests/com/simplepianotest/app/GoldenMidiTest.java
           java -cp /tmp/simplepiano-golden com.simplepianotest.app.GoldenMidiTest
       - name: Compile debug APK
