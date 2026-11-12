@@ -28,8 +28,11 @@ public final class MainActivity extends Activity {
     private static final int[] LENGTHS=SongData.LENGTHS;
     private static final int[] STARTS=SongData.STARTS;
     private static final int TOTAL_BEATS=SongData.TOTAL_BEATS;
-    private static final int[] PRACTICE={60,67,60,67};
-    private enum Phase { WELCOME, TEACH_C, TEACH_G, PRACTICE, SONG, RESULTS }
+    private int levelIndex=0; // 0: C/G, then A, F, E, D in song order
+    private int[] practiceNotes=SongProgression.practice(0);
+    private int[] learnedPitches(){return SongProgression.ownedPitches(levelIndex);}
+    private boolean childOwns(int midi){return SongProgression.owns(midi,levelIndex);}
+    private enum Phase { WELCOME, TEACH_C, TEACH_G, TEACH_EXTRA, PRACTICE, SONG, RESULTS }
     private Phase phase=Phase.WELCOME;
     private boolean lessonRecognized=false;
     private int practiceStep=0;
@@ -65,14 +68,14 @@ public final class MainActivity extends Activity {
                 beat=player.getBeatPosition();
                 if(beat>=0){
                     for(int i=0;i<MELODY.length;i++)
-                        if(SongData.isChildNote(MELODY[i]) && marks[i]==0 &&
+                        if(childOwns(MELODY[i]) && marks[i]==0 &&
                                 NoteTimingMatcher.shouldMiss(STARTS[i],LENGTHS[i],beat,flexibleTiming))marks[i]=2;
                     current=0;
                     while(current<MELODY.length-1 && beat>=STARTS[current]+LENGTHS[current])current++;
                 }
                 if(beat>=TOTAL_BEATS){
                     for(int i=0;i<marks.length;i++)
-                        if(SongData.isChildNote(MELODY[i]) && marks[i]==0)marks[i]=2;
+                        if(childOwns(MELODY[i]) && marks[i]==0)marks[i]=2;
                     playing=false;finished=true;phase=Phase.RESULTS;
                     status="כל הכבוד! ניגנת שיר שלם!";
                     player.pause();
@@ -94,10 +97,13 @@ public final class MainActivity extends Activity {
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         immersive();
+        levelIndex=SongProgression.clamp(
+            getPreferences(MODE_PRIVATE).getInt("little_star_level",0));
+        practiceNotes=SongProgression.practice(levelIndex);
         gameView=new GameView();setContentView(gameView);
         mainHandler.post(ticker);
         try {
-            player=new BackingPlayer(this,bpm);
+            player=new BackingPlayer(this,bpm,learnedPitches());
             player.setVolume(backingVolume());
             audioError="";
         } catch(Exception e) {
@@ -152,7 +158,8 @@ public final class MainActivity extends Activity {
         lastPitchAt=SystemClock.elapsedRealtime();
         if(playing && beat>=0 && beat<TOTAL_BEATS)stableWindows++;
         // Short, rhythm-free lessons run before the song begins.
-        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G || phase==Phase.PRACTICE) {
+        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G ||
+                phase==Phase.TEACH_EXTRA || phase==Phase.PRACTICE) {
             onLessonPitch(midi,attack);
             return;
         }
@@ -199,8 +206,9 @@ public final class MainActivity extends Activity {
         return diff<0.55;
     }
     private void onLessonPitch(double midi,boolean attack) {
-        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G) {
-            int expected=phase==Phase.TEACH_C?60:67;
+        if(phase==Phase.TEACH_C || phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA) {
+            int expected=phase==Phase.TEACH_EXTRA?SongProgression.newestPitch(levelIndex):
+                phase==Phase.TEACH_C?60:67;
             if(isMatchingPracticeNote(midi,expected)) {
                 lessonRecognized=true;
                 status="כל הכבוד! זיהיתי את "+name(expected)+" בפסנתר שלך!";
@@ -208,16 +216,16 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-        if(phase==Phase.PRACTICE && practiceStep<PRACTICE.length) {
-            int expected=PRACTICE[practiceStep];
+        if(phase==Phase.PRACTICE && practiceStep<practiceNotes.length) {
+            int expected=practiceNotes[practiceStep];
             if(isMatchingPracticeNote(midi,expected)) {
                 long now=SystemClock.elapsedRealtime();
                 if(now-lastPracticeHitAt<350)return;
                 practiceStep++;
                 lastPracticeHitAt=now;
-                status=practiceStep==PRACTICE.length?
-                    "נהדר! סיימת לתרגל. עכשיו מנגנים את כל השיר!" :
-                    "יופי! עכשיו נגן "+name(PRACTICE[practiceStep]);
+                status=practiceStep==practiceNotes.length?
+                    "נהדר! עכשיו מנגנים את השיר המלא!" :
+                    "יופי! עכשיו נגן "+name(practiceNotes[practiceStep]);
                 gameView.invalidate();
             }
         }
@@ -228,27 +236,51 @@ public final class MainActivity extends Activity {
         phase=Phase.PRACTICE;
         practiceStep=0;
         lastPracticeHitAt=0;
-        status="בוא נתרגל שוב: קרא דו וסול על החמשה";
+        status="בוא נתרגל שוב את התווים שלמדת";
         gameView.invalidate();
     }
     private void advanceLesson(){
         if(phase==Phase.WELCOME){
-            phase=Phase.TEACH_C;
+            phase=levelIndex==0?Phase.TEACH_C:Phase.TEACH_EXTRA;
             lessonRecognized=false;
-            status="נגן דו על הפסנתר כדי להתחיל";
+            int target=levelIndex==0?60:SongProgression.newestPitch(levelIndex);
+            status="נגן "+name(target)+" על הפסנתר כדי להתחיל";
         }else if(phase==Phase.TEACH_C){
             phase=Phase.TEACH_G;
             lessonRecognized=false;
             status="מצא את סול ונגן אותו";
-        }else if(phase==Phase.TEACH_G){
+        }else if(phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA){
             phase=Phase.PRACTICE;
             practiceStep=0;
             lastPracticeHitAt=0;
-            status="בוא נתרגל: דו, סול, דו, סול";
+            status="בוא נתרגל את התווים לפני השיר";
         }else if(phase==Phase.PRACTICE){
             phase=Phase.SONG;
             reset();
             playPause();
+        }
+        gameView.invalidate();
+    }
+    private void learnAnotherNote(){
+        if(phase!=Phase.RESULTS || !SongProgression.hasNext(levelIndex))return;
+        if(player!=null){player.close();player=null;}
+        playing=false;finished=false;everStarted=false;
+        levelIndex++;
+        getPreferences(MODE_PRIVATE).edit().putInt("little_star_level",levelIndex).apply();
+        practiceNotes=SongProgression.practice(levelIndex);
+        practiceStep=0;
+        lastPracticeHitAt=0;
+        lessonRecognized=false;
+        phase=Phase.TEACH_EXTRA;
+        int newPitch=SongProgression.newestPitch(levelIndex);
+        status="תו חדש! נמצא את "+name(newPitch)+" וננגן אותו";
+        try {
+            player=new BackingPlayer(this,bpm,learnedPitches());
+            player.setVolume(backingVolume());
+            audioError="";
+        } catch(Exception e) {
+            audioError=e.toString();
+            status="שגיאה בהכנת הליווי: "+audioError;
         }
         gameView.invalidate();
     }
@@ -295,7 +327,7 @@ public final class MainActivity extends Activity {
         }
         playing=false;everStarted=false;finished=false;beat=-4;current=0;lastHitMidi=-1;lastHitAt=0;
         for(int i=0;i<marks.length;i++)
-            marks[i]=SongData.isChildNote(MELODY[i])?0:3;
+            marks[i]=childOwns(MELODY[i])?0:3;
         pitchWindows=stableWindows=wrongPitchWindows=timingWindows=0;
         monitorReason="ממתינים לנגינה";
         status="מוכנים? ארבע פעימות ונתחיל!";
@@ -306,7 +338,7 @@ public final class MainActivity extends Activity {
         reset();bpm=newBpm;
         if(player!=null)player.close();
         try {
-            player=new BackingPlayer(this,bpm);
+            player=new BackingPlayer(this,bpm,learnedPitches());
             player.setVolume(backingVolume());
             audioError="";
         } catch(Exception e) {
@@ -330,7 +362,7 @@ public final class MainActivity extends Activity {
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF(),flexibleRect=new RectF();
-        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF(),practiceReturnRect=new RectF();
+        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF(),practiceReturnRect=new RectF(),nextNoteRect=new RectF();
         private float scale=1,logicalWidth=1080;
         GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         @Override protected void onDraw(Canvas canvas){
