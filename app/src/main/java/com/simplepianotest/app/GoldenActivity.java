@@ -573,23 +573,15 @@ public final class GoldenActivity extends Activity {
                 mid-354,478},0xd510103c);
             round(c,mid-350,142,mid+350,147,2,HOT);
             round(c,mid-350,469,mid+350,474,2,ELECTRIC);
-            text(c,"★",mid-269,227,57,HOT,true,Paint.Align.CENTER);
-            text(c,"★",mid+269,227,57,ELECTRIC,true,Paint.Align.CENTER);
-            text(c,"GOLDEN",mid,226,72,ACID,true,Paint.Align.CENTER);
-            text(c,"PLAY THE SONG",mid,263,19,0xffe3dbff,true,Paint.Align.CENTER);
-            first.set(mid-310,303,mid-105,358);
-            second.set(mid-88,303,mid+115,358);
-            pill(c,first,importedSong==null?"+ NOTES":"✓ NOTES",0xff292454,ELECTRIC);
-            pill(c,second,backingUri==null?"+ AUDIO":"✓ AUDIO",0xff292454,ELECTRIC);
-            third.set(mid-310,390,mid+225,452);
-            pill(c,third,"▶   START",importedSong!=null&&backingUri!=null?HOT:0xff554767,Color.WHITE);
-            fourth.set(mid+131,303,mid+310,358);
-            pill(c,fourth,"+ STEM",0xff302450,ACID);
-            fifth.set(mid+237,390,mid+327,452);
-            if(importedSong!=null && importedSong.tracks.size()>1)
-                pill(c,fifth,"♫ "+(trackIndex+1),0xff28285e,ELECTRIC);
+            text(c,"★  GOLDEN  ★",mid,236,68,ACID,true,Paint.Align.CENTER);
+            text(c,GoldenPack.isInstalled(GoldenActivity.this)?
+                "PLAY THE SONG":"SONG FILES MISSING",
+                mid,297,21,0xffe3dbff,true,Paint.Align.CENTER);
+            first.set(mid-210,352,mid+210,430);
+            pill(c,first,GoldenPack.isInstalled(GoldenActivity.this)?
+                "▶ START":"NOT READY",HOT,Color.WHITE);
             if(!notice.isEmpty())
-                text(c,notice,mid,513,17,ACID,true,Paint.Align.CENTER);
+                text(c,notice,mid,510,14,ACID,true,Paint.Align.CENTER);
         }
         private void lesson(Canvas c){
             int pitch=stage==Stage.BONUS_NOTE?progression.newestPitch(levelIndex):
@@ -663,8 +655,7 @@ public final class GoldenActivity extends Activity {
             second.set(mid-278,444,mid-8,506);
             pill(c,second,"REPLAY ↻",0xff262a63,ELECTRIC);
             third.set(mid-95,516,mid+95,573);
-            pill(c,third,recordedGuideUri==null?"+ STEM":"✓ STEM",
-                0xff25214f,ACID);
+            pill(c,third,"PRACTICE",0xff25214f,ACID);
         }
         private int nextRequiredNote(){
             if(melody.isEmpty())return -1;
@@ -792,15 +783,8 @@ public final class GoldenActivity extends Activity {
             if(event.getAction()!=MotionEvent.ACTION_UP)return true;
             float x=event.getX()/scale,y=event.getY()/scale;
             if(stage==Stage.HOME){
-                if(first.contains(x,y))pickFile(PICK_MIDI);
-                else if(second.contains(x,y))pickFile(PICK_BACKING);
-                else if(third.contains(x,y))chooseGolden();
-                else if(fourth.contains(x,y))pickFile(PICK_GUIDE);
-                else if(fifth.contains(x,y)&&importedSong!=null){
-                    trackIndex=(trackIndex+1)%importedSong.tracks.size();
-                    progression=null;
-                    recordedGuideUri=null;
-                }
+                if(first.contains(x,y) && importedSong!=null &&
+                        backingUri!=null)chooseGolden();
             }else if(stage==Stage.NOTE_ONE || stage==Stage.NOTE_TWO ||
                      stage==Stage.BONUS_NOTE || stage==Stage.PRACTICE){
                 if(first.contains(x,y))next();
@@ -813,7 +797,7 @@ public final class GoldenActivity extends Activity {
             }else if(stage==Stage.RESULT){
                 if(first.contains(x,y))next();
                 else if(second.contains(x,y))restartPlayback();
-                else if(third.contains(x,y))pickFile(PICK_GUIDE);
+                else if(third.contains(x,y))returnToPractice();
             }
             invalidate();return true;
         }
