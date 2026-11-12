@@ -376,7 +376,8 @@ public final class MainActivity extends Activity {
             canvas.drawRoundRect(new RectF(15,13,logicalWidth-15,489),23,23,gradient);
             drawHeader(canvas);
             if(phase==Phase.WELCOME || phase==Phase.TEACH_C ||
-                    phase==Phase.TEACH_G || phase==Phase.PRACTICE){
+                    phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA ||
+                    phase==Phase.PRACTICE){
                 drawLearning(canvas);
                 drawLearningControls(canvas);
             }else {
@@ -387,9 +388,9 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano DEMO v1.0",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano DEMO v1.1",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
-            text(c,"המנגינה שלך + הלהקה שלנו",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
+            text(c,"רמה "+(levelIndex+1)+"/"+SongProgression.levels()+"  •  "+SongProgression.ownedCount(levelIndex)+" תווים שלך",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
             round(c,x,y,x+w,y+10,5,0x55ffffff);
             if(phase==Phase.SONG || phase==Phase.RESULTS) {
@@ -399,11 +400,13 @@ public final class MainActivity extends Activity {
                     logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
             }else{
                 float progress=phase==Phase.WELCOME?0:phase==Phase.TEACH_C?.20f:
-                    phase==Phase.TEACH_G?.48f:.77f;
+                    phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA?.48f:.77f;
                 if(progress>0)round(c,x,y,x+w*progress,y+10,5,0xff69e4c6);
-                text(c,phase==Phase.WELCOME?"בחרנו שיר":
-                    phase==Phase.TEACH_C?"שלב 1: דו":
-                    phase==Phase.TEACH_G?"שלב 2: סול":"שלב 3: מתרגלים",
+                text(c,phase==Phase.WELCOME?"בוחרים לנגן":
+                    phase==Phase.TEACH_C?"דו":
+                    phase==Phase.TEACH_G?"סול":
+                    phase==Phase.TEACH_EXTRA?"תו חדש: "+name(SongProgression.newestPitch(levelIndex)):
+                    "מתרגלים",
                     logicalWidth-48,145,12,0xffbee8e3,false,Paint.Align.RIGHT);
             }
         }
@@ -413,27 +416,29 @@ public final class MainActivity extends Activity {
             if(phase==Phase.WELCOME) {
                 text(c,"⭐  🎵  ⭐",mid,226,46,0xffffbb49,true,Paint.Align.CENTER);
                 text(c,"בוא ננגן את כוכב קטן!",mid,272,35,0xff463982,true,Paint.Align.CENTER);
-                text(c,"לומדים רק שני תווים, ומנגנים שיר שלם עם הלהקה",mid,318,21,
+                text(c,"כל פעם לומדים עוד תו ומנגנים את כל השיר",mid,318,21,
                     0xff746a9e,false,Paint.Align.CENTER);
                 round(c,mid-196,340,mid-18,378,17,0xffe9f8ee);
                 round(c,mid+18,340,mid+196,378,17,0xffe9f3fd);
-                text(c,"🎹 דו + סול",mid-107,366,17,0xff278963,true,Paint.Align.CENTER);
+                text(c,levelIndex==0?"🎹 דו + סול":"🎹 "+SongProgression.ownedCount(levelIndex)+" תווים",mid-107,366,17,0xff278963,true,Paint.Align.CENTER);
                 text(c,"🎶 שיר שלם",mid+107,366,17,0xff4678bd,true,Paint.Align.CENTER);
-            }else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G) {
-                int target=phase==Phase.TEACH_C?60:67;
+            }else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G ||
+                    phase==Phase.TEACH_EXTRA) {
+                int target=phase==Phase.TEACH_EXTRA?SongProgression.newestPitch(levelIndex):
+                    phase==Phase.TEACH_C?60:67;
                 text(c,"לומדים את התו "+name(target)+"!",mid,206,28,0xff554285,true,Paint.Align.CENTER);
                 text(c,"אותו התו מופיע גם על החמשה וגם על הפסנתר",mid,238,17,
                     0xff6e6595,false,Paint.Align.CENTER);
                 drawStaffKeyboardPair(c,mid,target);
             }else if(phase==Phase.PRACTICE) {
-                int target=PRACTICE[Math.min(practiceStep,PRACTICE.length-1)];
+                int target=practiceNotes[Math.min(practiceStep,practiceNotes.length-1)];
                 text(c,"קרא את התו ונגן אותו!",mid,205,27,0xff554285,true,Paint.Align.CENTER);
-                text(c,practiceStep>=PRACTICE.length?
-                    "מצוין! אתה כבר מכיר את דו וסול על החמשה.":
-                    "תרגיל "+(practiceStep+1)+" מתוך "+PRACTICE.length+
+                text(c,practiceStep>=practiceNotes.length?
+                    "מצוין! עכשיו מנגנים את השיר המלא.":
+                    "תרגיל "+(practiceStep+1)+" מתוך "+practiceNotes.length+
                     "  •  התו הבא: "+name(target),
                     mid,237,17,0xff736899,false,Paint.Align.CENTER);
-                for(int i=0;i<PRACTICE.length;i++){
+                for(int i=0;i<practiceNotes.length;i++){
                     float bx=mid+(i-1.5f)*50;
                     circle(c,bx,255,9,i<practiceStep?0xff27b48d:
                         i==practiceStep?0xff7f5bdf:0xffded9eb);
@@ -459,9 +464,11 @@ public final class MainActivity extends Activity {
             drawKeyboard(c,keyboardCenter,target);
             text(c,"↔",mid,349,36,0xff8b6cdd,true,Paint.Align.CENTER);
             text(c,"אותו צליל",mid,371,13,0xff77679a,true,Paint.Align.CENTER);
-            text(c,target==60?"דו אמצעי: על קו העזר שמתחת לחמשה":
-                "סול: על הקו השני מלמטה",
-                staffCenter,392,14,0xff6e6392,true,Paint.Align.CENTER);
+            String location=target==60?"קו עזר":target==62?"מתחת לחמשה":
+                target==64?"קו תחתון":target==65?"רווח ראשון":
+                target==67?"קו שני":target==69?"רווח שני":"";
+            text(c,name(target)+" • "+location,staffCenter,392,14,
+                0xff6e6392,true,Paint.Align.CENTER);
         }
         private void drawSingleTeachingNote(Canvas c,float cx,int midi) {
             float top=294,gap=15,bottom=top+4*gap;
@@ -507,9 +514,11 @@ public final class MainActivity extends Activity {
             round(c,15,502,logicalWidth-15,585,17,0xffffffff);
             float right=logicalWidth-40;
             learnPrimaryRect.set(right-283,515,right,568);
-            String title=phase==Phase.WELCOME?"🎹 לומדים דו":
+            String title=phase==Phase.WELCOME?
+                levelIndex==0?"🎹 לומדים דו":"🎹 התו הבא":
                 phase==Phase.TEACH_C?"ממשיכים לסול":
-                phase==Phase.TEACH_G?"מתרגלים יחד":"▶ מנגנים שיר שלם";
+                phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA?
+                    "מתרגלים יחד":"▶ מנגנים שיר שלם";
             button(c,learnPrimaryRect,title,0xff7555e8,Color.WHITE);
             learnBackRect.set(36,520,198,565);
             if(phase!=Phase.WELCOME)
@@ -529,7 +538,7 @@ public final class MainActivity extends Activity {
             practiceReturnRect.set(center+113,164,center+270,200);
             button(c,practiceReturnRect,"↩ לתרגול",0xffe8f4ff,0xff345ba5);
             String n=beat<0?"מוכנים?":
-                SongData.isChildNote(MELODY[current])?"התור שלך: "+name(MELODY[current]):
+                childOwns(MELODY[current])?"התור שלך: "+name(MELODY[current]):
                 "הלהקה מנגנת";
             text(c,n,x+23,186,16,0xff704dd0,true,Paint.Align.LEFT);
             float top=218,sep=21,bottom=top+4*sep;
