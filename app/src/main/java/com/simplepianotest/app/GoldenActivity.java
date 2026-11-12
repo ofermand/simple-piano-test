@@ -250,7 +250,7 @@ public final class GoldenActivity extends Activity {
     private void previous(){
         if(stage==Stage.NOTE_ONE)stage=Stage.HOME;
         else if(stage==Stage.NOTE_TWO)stage=Stage.NOTE_ONE;
-        else if(stage==Stage.BONUS_NOTE)stage=Stage.RESULT;
+        else if(stage==Stage.BONUS_NOTE)stage=Stage.HOME;
         else if(stage==Stage.PRACTICE)
             stage=levelIndex==0?Stage.NOTE_TWO:Stage.BONUS_NOTE;
         else if(stage==Stage.SONG || stage==Stage.RESULT) {
