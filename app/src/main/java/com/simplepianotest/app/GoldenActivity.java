@@ -360,6 +360,14 @@ public final class GoldenActivity extends Activity {
         if(guide!=null)guide.setVolume(vol);
     }
     private void pickFile(int code){
+        if(code==PICK_GUIDE && progression==null){
+            if(importedSong==null || midiUri==null){notice="MIDI FIRST";view.invalidate();return;}
+            melody.clear();
+            melody.addAll(importedSong.tracks.get(trackIndex).notes);
+            progression=new GoldenProgression(melody);
+            levelIndex=getPreferences(MODE_PRIVATE).getInt(songKey(),0);
+            applyLevel();
+        }
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.setType("*/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -387,6 +395,8 @@ public final class GoldenActivity extends Activity {
                     if(in==null)throw new Exception("Cannot read file");
                     GoldenMidi.Song song=GoldenMidi.parse(in);
                     importedSong=song;
+                    progression=null;
+                    recordedGuideUri=null;
                     trackIndex=0;
                     midiUri=uri;
                     getPreferences(MODE_PRIVATE).edit()
@@ -737,11 +747,14 @@ public final class GoldenActivity extends Activity {
                 if(first.contains(x,y))pickFile(PICK_MIDI);
                 else if(second.contains(x,y))pickFile(PICK_BACKING);
                 else if(third.contains(x,y))chooseGolden();
-                else if(fourth.contains(x,y))chooseDemo();
-                else if(fifth.contains(x,y)&&importedSong!=null)
+                else if(fourth.contains(x,y))pickFile(PICK_GUIDE);
+                else if(fifth.contains(x,y)&&importedSong!=null){
                     trackIndex=(trackIndex+1)%importedSong.tracks.size();
+                    progression=null;
+                    recordedGuideUri=null;
+                }
             }else if(stage==Stage.NOTE_ONE || stage==Stage.NOTE_TWO ||
-                     stage==Stage.PRACTICE){
+                     stage==Stage.BONUS_NOTE || stage==Stage.PRACTICE){
                 if(first.contains(x,y))next();
                 else if(second.contains(x,y))previous();
             }else if(stage==Stage.SONG){
@@ -750,8 +763,9 @@ public final class GoldenActivity extends Activity {
                 else if(third.contains(x,y))restartPlayback();
                 else if(fourth.contains(x,y))changeVolume();
             }else if(stage==Stage.RESULT){
-                if(first.contains(x,y))restartPlayback();
-                else if(second.contains(x,y))returnToPractice();
+                if(first.contains(x,y))next();
+                else if(second.contains(x,y))restartPlayback();
+                else if(third.contains(x,y))pickFile(PICK_GUIDE);
             }
             invalidate();return true;
         }
