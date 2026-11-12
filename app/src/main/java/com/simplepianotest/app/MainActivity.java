@@ -125,6 +125,30 @@ public final class MainActivity extends Activity {
         int result=voice.speak(message,TextToSpeech.QUEUE_FLUSH,null,activeVoiceId);
         if(result==TextToSpeech.ERROR)finishVoice(activeVoiceId);
     }
+    private void toggleVoice(){
+        if(voiceEnabled){
+            voiceEnabled=false;
+            stopVoice();
+        }else{
+            voiceEnabled=true;
+            if(voiceAvailable){
+                if(phase==Phase.WELCOME)
+                    speak("ברוכים הבאים! מתחילים ללמוד תווים ולנגן שיר שלם.");
+                else if(phase==Phase.TEACH_C || phase==Phase.TEACH_G ||
+                        phase==Phase.TEACH_EXTRA){
+                    int pitch=phase==Phase.TEACH_C?60:phase==Phase.TEACH_G?67:
+                        SongProgression.newestPitch(levelIndex);
+                    speak("מצאו את "+name(pitch)+" בחמשה ובפסנתר, ונגנו אותו.");
+                }else if(phase==Phase.PRACTICE)promptPractice();
+                else if(phase==Phase.SONG)speak("הקשיבו למוזיקה ונגנו את התווים הצבעוניים.");
+                else speak("כל הכבוד! אפשר לנגן שוב, או להוסיף תו חדש.");
+            }else{
+                status="כדי לשמוע הדרכה צריך קול עברי במכשיר";
+            }
+        }
+        getPreferences(MODE_PRIVATE).edit().putBoolean("voice_enabled",voiceEnabled).apply();
+        if(gameView!=null)gameView.invalidate();
+    }
     private void promptPractice(){
         int target=practiceNotes[Math.min(practiceStep,practiceNotes.length-1)];
         speak("בואו נתרגל. הסתכלו על התו בחמשה ועל הקליד המואר, ונגנו "+
@@ -477,7 +501,7 @@ public final class MainActivity extends Activity {
     private final class GameView extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF playRect=new RectF(),resetRect=new RectF(),slowRect=new RectF(),normalRect=new RectF(),soundRect=new RectF(),permissionRect=new RectF(),diagnosticRect=new RectF(),flexibleRect=new RectF();
-        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF(),practiceReturnRect=new RectF(),nextNoteRect=new RectF();
+        private final RectF learnPrimaryRect=new RectF(),learnBackRect=new RectF(),practiceReturnRect=new RectF(),nextNoteRect=new RectF(),voiceToggleRect=new RectF();
         private float scale=1,logicalWidth=1080;
         GameView(){super(MainActivity.this);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         @Override protected void onDraw(Canvas canvas){
@@ -503,7 +527,11 @@ public final class MainActivity extends Activity {
         }
         private void drawHeader(Canvas c){
             text(c,"⭐  כוכב קטן",logicalWidth-43,69,32,Color.WHITE,true,Paint.Align.RIGHT);
-            text(c,"Simple Piano DEMO v1.1",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            text(c,"Simple Piano DEMO v1.2",44,57,19,0xffb5efde,true,Paint.Align.LEFT);
+            voiceToggleRect.set(290,39,430,84);
+            button(c,voiceToggleRect,voiceEnabled?"🔊 קול":"🔇 קול",
+                voiceEnabled?0xffe4f6f0:0xff4e5870,
+                voiceEnabled?0xff21614e:Color.WHITE);
             text(c,micOn?"●  🎙  מיקרופון פעיל":"●  🎙  מיקרופון כבוי",44,81,13,micOn?0xff70ecc4:0xffffb1b9,false,Paint.Align.LEFT);
             text(c,"רמה "+(levelIndex+1)+"/"+SongProgression.levels()+"  •  "+SongProgression.ownedCount(levelIndex)+" תווים שלך",logicalWidth-45,94,14,0xffb2d9db,false,Paint.Align.RIGHT);
             float x=48,w=logicalWidth-96,y=120;
@@ -779,6 +807,7 @@ public final class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent event){
             if(event.getAction()!=MotionEvent.ACTION_UP)return true;
             float x=event.getX()/scale,y=event.getY()/scale;
+            if(voiceToggleRect.contains(x,y)){toggleVoice();return true;}
             if(phase==Phase.WELCOME || phase==Phase.TEACH_C ||
                     phase==Phase.TEACH_G || phase==Phase.TEACH_EXTRA ||
                     phase==Phase.PRACTICE){
