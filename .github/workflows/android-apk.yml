@@ -55,6 +55,33 @@ jobs:
             app/src/main/java/com/simplepianotest/app/GoldenProgression.java \
             tests/com/simplepianotest/app/GoldenMidiTest.java
           java -cp /tmp/simplepiano-golden com.simplepianotest.app.GoldenMidiTest
+      - name: Test Hebrew narration cue mapping
+        run: |
+          mkdir -p /tmp/simplepiano-voice
+          javac -d /tmp/simplepiano-voice \
+            app/src/main/java/com/simplepianotest/app/VoicePhrases.java \
+            tests/com/simplepianotest/app/VoicePhrasesTest.java
+          java -cp /tmp/simplepiano-voice com.simplepianotest.app.VoicePhrasesTest
+      - name: Install Python for neural Hebrew voice recording
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Render offline neural Hebrew voice prompts
+        run: |
+          python -m pip install --disable-pip-version-check "edge-tts>=7.0,<8.0"
+          python scripts/render_hebrew_voice.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec=importlib.util.spec_from_file_location("voices","scripts/render_hebrew_voice.py")
+          mod=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          missing=[k for k in mod.SCRIPTS if
+              not (Path("app/src/main/assets/voice_he")/(k+".mp3")).is_file()]
+          assert not missing, f"Voice clips missing: {missing}"
+          assert len(mod.SCRIPTS)>=25, "Incomplete spoken lesson pack"
+          print(f"Verified {len(mod.SCRIPTS)} natural Hebrew MP3 clips")
+          PY
       - name: Compile debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Publish installable APK
