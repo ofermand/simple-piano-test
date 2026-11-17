@@ -1,0 +1,41 @@
+name: Build iPhone app
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, codex/ios-first-build]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test portable music and pitch code
+        run: |
+          set -o pipefail
+          swift test --package-path ios 2>&1 | tee ios/test-results.log
+      - name: Build iPhone Simulator app
+        run: |
+          xcodebuild -project ios/SimplePiano.xcodeproj -scheme SimplePiano \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build/simulator CODE_SIGNING_ALLOWED=NO build
+      - name: Compile for physical iPhone (unsigned)
+        run: |
+          xcodebuild -project ios/SimplePiano.xcodeproj -scheme SimplePiano \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build/device CODE_SIGNING_ALLOWED=NO build
+      - name: Package simulator app
+        run: ditto -c -k --sequesterRsrc --keepParent ios/build/simulator/Build/Products/Debug-iphonesimulator/SimplePiano.app ios/SimplePiano-Simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimplePiano-iOS-Simulator
+          path: ios/SimplePiano-Simulator.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iOS-core-test-results
+          path: ios/test-results.log
