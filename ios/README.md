@@ -70,8 +70,7 @@ For a signed distribution build, select a real device/generic iOS destination,
 choose **Product → Archive**, then **Distribute App → App Store Connect**. Do not
 rename a simulator app or source ZIP to `.ipa`: neither installs on an iPhone.
 The repository workflow `.github/workflows/ios.yml` runs tests and unsigned
-simulator/device builds on a Mac after the code is pushed; no run was triggered
-or represented as passed during implementation.
+simulator/device builds on a Mac after the code is pushed; the first unsigned macOS build passed on 2026-11-17: [Actions run #1](https://github.com/ofermand/simple-piano-test/actions/runs/44161516993), code commit `0fa5190f6afad7e25ed0b0f3874546ccd9e5eb71`.
 
 ## Validation and limits
 
@@ -82,10 +81,16 @@ silence, narration confirmation and generated backing samples. All application
 Swift files also pass syntax parsing. The Xcode project, scheme, plist, resource
 references and icon are checked structurally.
 
-**Not yet validated:** Xcode SDK type checking/linking, simulator launch,
-signing, installation, real microphone accuracy, playback synchronization and
-AEC on a physical iPhone. The host has no Apple SDK/Xcode. Source syntax and core
-tests do not establish an iOS build or successful acoustic separation. Voice
+**Validated on GitHub's macOS runner:** portable Swift tests, the Debug iPhone
+Simulator build, and the unsigned Release build for physical iPhone all passed
+in [run #1](https://github.com/ofermand/simple-piano-test/actions/runs/44161516993),
+code commit `0fa5190f6afad7e25ed0b0f3874546ccd9e5eb71`. The run produced a simulator
+app ZIP and test log. No Apple signing credentials were required or supplied.
+
+**Not yet validated:** simulator launch, signing, installation, real microphone
+accuracy, playback synchronization and AEC on a physical iPhone. The local host
+has no Apple SDK/Xcode; SDK compilation was performed by GitHub's macOS runner.
+Compilation and core tests do not establish successful acoustic separation. Voice
 processing can affect piano timbre; onset/confidence checks are heuristics and
 cannot guarantee speech/instrument separation. Simulator tests cannot establish
 speaker/microphone performance.
